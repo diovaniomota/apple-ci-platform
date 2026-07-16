@@ -1,0 +1,42 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Sync certificates, build, and upload to TestFlight"
+  lane :build_and_upload do
+    # Code signing via Match
+    match(
+      type: "appstore",
+      app_identifier: "{{BUNDLE_ID}}",
+      git_url: "{{MATCH_GIT_URL}}",
+      readonly: true
+    )
+
+    # Build the app
+    gym(
+      scheme: "{{SCHEME}}",
+      export_method: "app-store",
+      clean: true,
+      output_directory: "./build",
+      output_name: "{{SCHEME}}.ipa"
+    )
+
+    # Upload to TestFlight via API Key
+    pilot(
+      app_identifier: "{{BUNDLE_ID}}",
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      notify_external_testers: false
+    )
+  end
+
+  desc "Build only (no upload) — useful for testing"
+  lane :build_only do
+    gym(
+      scheme: "{{SCHEME}}",
+      export_method: "ad-hoc",
+      clean: true,
+      output_directory: "./build",
+      output_name: "{{SCHEME}}.ipa"
+    )
+  end
+end

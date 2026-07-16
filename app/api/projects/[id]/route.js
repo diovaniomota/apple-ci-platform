@@ -1,0 +1,39 @@
+import { NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export async function GET(request, { params }) {
+  try {
+    const project = await prisma.project.findUnique({
+      where: { id: params.id },
+      include: {
+        builds: {
+          orderBy: { createdAt: 'desc' }
+        }
+      }
+    });
+    
+    if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    return NextResponse.json(project);
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request, { params }) {
+  try {
+    // Delete all builds first (cascade)
+    await prisma.build.deleteMany({
+      where: { projectId: params.id }
+    });
+    
+    await prisma.project.delete({
+      where: { id: params.id }
+    });
+    
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 });
+  }
+}

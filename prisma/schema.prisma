@@ -1,0 +1,36 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Project {
+  id            String   @id @default(uuid())
+  name          String
+  repoUrl       String
+  branch        String   @default("main")
+  buildScheme   String
+  bundleId      String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  builds        Build[]
+}
+
+model Build {
+  id          String   @id @default(uuid())
+  projectId   String
+  status      String   @default("PENDING") // PENDING, RUNNING, SUCCESS, FAILED
+  logs        String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  project     Project  @relation(fields: [projectId], references: [id])
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
