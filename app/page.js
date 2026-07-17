@@ -64,7 +64,7 @@ export default async function Dashboard() {
                     Created {new Date(project.createdAt).toLocaleDateString()}
                   </span>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '0.875rem' }} onClick={(e) => e.preventDefault()}>
+                    <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '0.875rem' }}>
                       View
                     </button>
                   </div>
