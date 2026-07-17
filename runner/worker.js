@@ -91,7 +91,11 @@ async function processBuilds() {
     if (settings.MATCH_PASSWORD) fastlaneEnv.MATCH_PASSWORD = settings.MATCH_PASSWORD;
     if (settings.ASC_KEY_ID) fastlaneEnv.APP_STORE_CONNECT_API_KEY_KEY_ID = settings.ASC_KEY_ID;
     if (settings.ASC_ISSUER_ID) fastlaneEnv.APP_STORE_CONNECT_API_KEY_ISSUER_ID = settings.ASC_ISSUER_ID;
-    if (settings.ASC_KEY_PATH) fastlaneEnv.APP_STORE_CONNECT_API_KEY_KEY_FILEPATH = settings.ASC_KEY_PATH;
+    if (settings.ASC_KEY_CONTENT) {
+      const p8Path = path.join(WORKSPACE_DIR, 'AuthKey.p8');
+      fs.writeFileSync(p8Path, settings.ASC_KEY_CONTENT);
+      fastlaneEnv.APP_STORE_CONNECT_API_KEY_KEY_FILEPATH = p8Path;
+    }
 
     // 1. Git Clone
     await appendLog(build.id, `\n📦 Cloning repository...\n   ${build.project.repoUrl} [${build.project.branch}]\n`);

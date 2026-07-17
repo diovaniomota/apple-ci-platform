@@ -48,6 +48,41 @@ function SettingField({ label, field, description, type = 'text', value, onChang
   );
 }
 
+function TextareaSettingField({ label, field, description, value, onChange }) {
+  return (
+    <div style={{ marginBottom: '20px' }}>
+      <label style={{ display: 'block', fontWeight: '500', marginBottom: '4px', color: 'var(--text-main)' }}>
+        {label}
+      </label>
+      {description && (
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>{description}</p>
+      )}
+      <textarea
+        value={value || ''}
+        onChange={e => onChange(field, e.target.value)}
+        rows={6}
+        style={{
+          width: '100%',
+          padding: '12px',
+          borderRadius: '8px',
+          border: '1px solid var(--border)',
+          background: 'rgba(15, 23, 42, 0.6)',
+          color: 'var(--text-main)',
+          fontSize: '0.9rem',
+          outline: 'none',
+          fontFamily: 'monospace',
+          transition: 'border-color 0.2s ease',
+        }}
+        onFocus={e => e.target.style.borderColor = 'var(--primary)'}
+        onBlur={e => e.target.style.borderColor = 'var(--border)'}
+        placeholder={`Paste the content of your .p8 file here...`}
+      />
+    </div>
+  );
+}
+
+
+
 function SectionCard({ icon: Icon, title, children, color = '#3b82f6' }) {
   return (
     <div className="glass-panel" style={{ marginBottom: '24px' }}>
@@ -161,11 +196,11 @@ export default function SettingsPage() {
           value={settings.ASC_ISSUER_ID}
           onChange={handleChange}
         />
-        <SettingField
-          label="Path to .p8 Key File"
-          field="ASC_KEY_PATH"
-          description="Absolute path to the downloaded AuthKey .p8 file on this Mac (e.g. /Users/diovaniomota/Downloads/AuthKey_ABC1234.p8)."
-          value={settings.ASC_KEY_PATH}
+        <TextareaSettingField
+          label="Content of .p8 Key File"
+          field="ASC_KEY_CONTENT"
+          description="Cole o conteúdo do arquivo .p8 baixado da Apple (começa com -----BEGIN PRIVATE KEY-----)."
+          value={settings.ASC_KEY_CONTENT}
           onChange={handleChange}
         />
       </SectionCard>
