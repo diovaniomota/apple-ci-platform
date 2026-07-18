@@ -3,7 +3,15 @@ const { PrismaClient } = require('@prisma/client');
 const fs = require('fs');
 const path = require('path');
 
-const prisma = new PrismaClient();
+require('dotenv').config();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
+  log: [],
+});
 const WORKSPACE_DIR = path.join(__dirname, '../builds-workspace');
 
 if (!fs.existsSync(WORKSPACE_DIR)) {
@@ -91,6 +99,7 @@ async function processBuilds() {
     if (settings.MATCH_PASSWORD) fastlaneEnv.MATCH_PASSWORD = settings.MATCH_PASSWORD;
     if (settings.ASC_KEY_ID) fastlaneEnv.APP_STORE_CONNECT_API_KEY_KEY_ID = settings.ASC_KEY_ID;
     if (settings.ASC_ISSUER_ID) fastlaneEnv.APP_STORE_CONNECT_API_KEY_ISSUER_ID = settings.ASC_ISSUER_ID;
+    if (settings.MATCH_GIT_URL) fastlaneEnv.MATCH_GIT_URL = settings.MATCH_GIT_URL;
     if (settings.ASC_KEY_CONTENT) {
       const p8Path = path.join(WORKSPACE_DIR, 'AuthKey.p8');
       fs.writeFileSync(p8Path, settings.ASC_KEY_CONTENT);
@@ -123,9 +132,9 @@ async function processBuilds() {
     const templatePath = path.join(__dirname, 'fastlane', 'Fastfile');
     let fastfileContent = fs.readFileSync(templatePath, 'utf8');
     fastfileContent = fastfileContent
-      .replace('{{SCHEME}}', build.project.buildScheme || 'Runner')
-      .replace('{{BUNDLE_ID}}', build.project.bundleId)
-      .replace('{{MATCH_GIT_URL}}', settings.MATCH_GIT_URL || '');
+      .replaceAll('{{SCHEME}}', build.project.buildScheme || 'Runner')
+      .replaceAll('{{BUNDLE_ID}}', build.project.bundleId)
+      .replaceAll('{{MATCH_GIT_URL}}', settings.MATCH_GIT_URL || '');
 
     fs.writeFileSync(path.join(fastlaneDir, 'Fastfile'), fastfileContent);
 
