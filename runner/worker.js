@@ -106,7 +106,7 @@ async function processBuilds() {
     const iosDir = isFlutter ? path.join(projectDir, 'ios') : projectDir;
     
     if (isFlutter) {
-      await appendLog(build.id, `\n🦋 Flutter project detected (Flutter 3.29.3 / Dart 3.7.2)...\n`);
+      await appendLog(build.id, `\n🦋 Flutter project detected (Flutter 3.38.10 / Dart 3.10.9)...\n`);
       const flutterCmd = path.join(process.env.HOME || '/Users/diovaniomota', 'development/flutter/bin/flutter');
       await runCommand(flutterCmd, ['clean'], projectDir, build.id, fastlaneEnv);
       await runCommand(flutterCmd, ['pub', 'get'], projectDir, build.id, fastlaneEnv);
