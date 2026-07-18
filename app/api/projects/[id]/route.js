@@ -21,6 +21,25 @@ export async function GET(request, { params }) {
   }
 }
 
+export async function PUT(request, { params }) {
+  try {
+    const body = await request.json();
+    const updatedProject = await prisma.project.update({
+      where: { id: params.id },
+      data: {
+        name: body.name,
+        repoUrl: body.repoUrl,
+        branch: body.branch,
+        bundleId: body.bundleId,
+        buildScheme: body.buildScheme,
+      }
+    });
+    return NextResponse.json(updatedProject);
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to update project' }, { status: 500 });
+  }
+}
+
 export async function DELETE(request, { params }) {
   try {
     // Delete all builds first (cascade)
