@@ -148,7 +148,7 @@ async function processBuilds() {
     // 4. Fastlane Match — download certs if configured
     if (settings.MATCH_GIT_URL && settings.MATCH_GIT_URL.trim() !== '') {
       await appendLog(build.id, `\n🔐 Syncing code signing certificates via Fastlane Match...\n`);
-      await runCommand('fastlane', ['match', 'appstore', '--readonly', '--app_identifier', build.project.bundleId], iosDir, build.id, fastlaneEnv);
+      await runCommand('fastlane', ['match', 'appstore', '--app_identifier', build.project.bundleId, '--git_url', settings.MATCH_GIT_URL], iosDir, build.id, fastlaneEnv);
     } else {
       await appendLog(build.id, `\n⚠️  Skipping Match — no MATCH_GIT_URL configured in Settings.\n`);
     }
