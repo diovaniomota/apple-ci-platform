@@ -94,7 +94,7 @@ async function processBuilds() {
       FASTLANE_SKIP_UPDATE_CHECK: '1',
     };
 
-    if (settings.APPLE_ID) fastlaneEnv.FASTLANE_USER = settings.APPLE_ID;
+    if (settings.APPLE_ID && !settings.ASC_KEY_ID) fastlaneEnv.FASTLANE_USER = settings.APPLE_ID;
     if (settings.APPLE_TEAM_ID) fastlaneEnv.FASTLANE_TEAM_ID = settings.APPLE_TEAM_ID;
     if (settings.MATCH_PASSWORD) fastlaneEnv.MATCH_PASSWORD = settings.MATCH_PASSWORD;
     if (settings.ASC_KEY_ID) fastlaneEnv.APP_STORE_CONNECT_API_KEY_KEY_ID = settings.ASC_KEY_ID;

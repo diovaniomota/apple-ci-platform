@@ -3,6 +3,13 @@ default_platform(:ios)
 platform :ios do
   desc "Sync certificates, build, and upload to TestFlight"
   lane :build_and_upload do
+    app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+      key_filepath: ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"],
+      in_house: false
+    )
+
     # Code signing via Match
     match(
       type: "appstore",
