@@ -8,7 +8,7 @@ platform :ios do
       type: "appstore",
       app_identifier: "{{BUNDLE_ID}}",
       git_url: "{{MATCH_GIT_URL}}",
-      readonly: true
+      readonly: false
     )
 
     # Build the app
