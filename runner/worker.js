@@ -101,9 +101,20 @@ async function processBuilds() {
     await appendLog(build.id, `\n📦 Cloning repository...\n   ${build.project.repoUrl} [${build.project.branch}]\n`);
     await runCommand('git', ['clone', '-b', build.project.branch, '--depth=1', build.project.repoUrl, projectDir], WORKSPACE_DIR, build.id, fastlaneEnv);
 
+    // Detect Flutter project
+    const isFlutter = fs.existsSync(path.join(projectDir, 'pubspec.yaml'));
+    const iosDir = isFlutter ? path.join(projectDir, 'ios') : projectDir;
+    
+    if (isFlutter) {
+      await appendLog(build.id, `\n🦋 Flutter project detected. Running flutter commands...\n`);
+      const flutterCmd = path.join(process.env.HOME || '/Users/diovaniomota', 'development/flutter/bin/flutter');
+      await runCommand(flutterCmd, ['clean'], projectDir, build.id, fastlaneEnv);
+      await runCommand(flutterCmd, ['pub', 'get'], projectDir, build.id, fastlaneEnv);
+    }
+
     // 2. Setup Fastlane directory
     await appendLog(build.id, `\n⚙️  Configuring Fastlane...\n`);
-    const fastlaneDir = path.join(projectDir, 'fastlane');
+    const fastlaneDir = path.join(iosDir, 'fastlane');
     if (!fs.existsSync(fastlaneDir)) {
       fs.mkdirSync(fastlaneDir, { recursive: true });
     }
@@ -112,29 +123,30 @@ async function processBuilds() {
     const templatePath = path.join(__dirname, 'fastlane', 'Fastfile');
     let fastfileContent = fs.readFileSync(templatePath, 'utf8');
     fastfileContent = fastfileContent
-      .replace('{{SCHEME}}', build.project.buildScheme)
+      .replace('{{SCHEME}}', build.project.buildScheme || 'Runner')
       .replace('{{BUNDLE_ID}}', build.project.bundleId)
       .replace('{{MATCH_GIT_URL}}', settings.MATCH_GIT_URL || '');
 
     fs.writeFileSync(path.join(fastlaneDir, 'Fastfile'), fastfileContent);
 
     // 3. CocoaPods (if applicable)
-    if (fs.existsSync(path.join(projectDir, 'Podfile'))) {
+    if (fs.existsSync(path.join(iosDir, 'Podfile'))) {
       await appendLog(build.id, `\n🦕 Installing CocoaPods dependencies...\n`);
-      await runCommand('pod', ['install', '--repo-update'], projectDir, build.id, fastlaneEnv);
+      // We must run pod install inside the ios directory
+      await runCommand('pod', ['install', '--repo-update'], iosDir, build.id, fastlaneEnv);
     }
 
     // 4. Fastlane Match — download certs if configured
-    if (settings.MATCH_GIT_URL) {
+    if (settings.MATCH_GIT_URL && settings.MATCH_GIT_URL.trim() !== '') {
       await appendLog(build.id, `\n🔐 Syncing code signing certificates via Fastlane Match...\n`);
-      await runCommand('fastlane', ['match', 'appstore', '--readonly', '--app_identifier', build.project.bundleId], projectDir, build.id, fastlaneEnv);
+      await runCommand('fastlane', ['match', 'appstore', '--readonly', '--app_identifier', build.project.bundleId], iosDir, build.id, fastlaneEnv);
     } else {
       await appendLog(build.id, `\n⚠️  Skipping Match — no MATCH_GIT_URL configured in Settings.\n`);
     }
 
     // 5. Fastlane Build
-    await appendLog(build.id, `\n🔨 Building with Xcode (scheme: ${build.project.buildScheme})...\n`);
-    await runCommand('fastlane', ['build_and_upload'], projectDir, build.id, fastlaneEnv);
+    await appendLog(build.id, `\n🔨 Building with Xcode...\n`);
+    await runCommand('fastlane', ['build_and_upload'], iosDir, build.id, fastlaneEnv);
 
     await appendLog(build.id, `\n✅ Build completed and uploaded to TestFlight!\n`);
     await prisma.build.update({ where: { id: build.id }, data: { status: 'SUCCESS' } });
