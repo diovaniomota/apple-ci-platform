@@ -190,13 +190,13 @@ async function processBuilds() {
         fs.writeFileSync(podfilePath, podfileContent);
 
         // Fix for GoogleSignIn 8.0 conflicting with Firebase 10.29.0
-        const gsiPodspecPath1 = path.join(iosDir, '.symlinks', 'plugins', 'google_sign_in_ios', 'darwin', 'google_sign_in_ios.podspec');
-        const gsiPodspecPath2 = path.join(iosDir, '.symlinks', 'plugins', 'google_sign_in_ios', 'ios', 'google_sign_in_ios.podspec');
-        const gsiPodspecPath = fs.existsSync(gsiPodspecPath1) ? gsiPodspecPath1 : (fs.existsSync(gsiPodspecPath2) ? gsiPodspecPath2 : null);
-        if (gsiPodspecPath) {
-          let gsiPodspec = fs.readFileSync(gsiPodspecPath, 'utf8');
-          gsiPodspec = gsiPodspec.replace(/s\.dependency\s+['"]GoogleSignIn['"]\s*,\s*['"]~>\s*8\.0(\.0)?['"]/g, "s.dependency 'GoogleSignIn', '~> 7.1.0'");
-          fs.writeFileSync(gsiPodspecPath, gsiPodspec);
+        // Patch it globally in the pub cache since symlinks might not be reliable
+        try {
+          const { execSync } = require('child_process');
+          execSync(`find ~/.pub-cache/hosted -name "google_sign_in_ios.podspec" -exec sed -i '' "s/s.dependency 'GoogleSignIn', '~> 8.0'/s.dependency 'GoogleSignIn', '~> 7.1.0'/g" {} +`);
+          execSync(`find ~/.pub-cache/hosted -name "google_sign_in_ios.podspec" -exec sed -i '' "s/s.dependency 'GoogleSignIn', '~> 8.0.0'/s.dependency 'GoogleSignIn', '~> 7.1.0'/g" {} +`);
+        } catch (e) {
+          console.error("Failed to patch pub cache:", e.message);
         }
 
         await runCommand('pod', ['install', '--repo-update'], iosDir, build.id, fastlaneEnv);
