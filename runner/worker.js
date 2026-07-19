@@ -177,13 +177,18 @@ async function processBuilds() {
         const podfilePath = path.join(iosDir, 'Podfile');
         let podfileContent = fs.readFileSync(podfilePath, 'utf8');
         
-        // Downgrade Firebase SDK
+        // Downgrade Firebase SDK and force SDWebImage to < 5.18.0
         if (!podfileContent.includes('$FirebaseSDKVersion')) {
           podfileContent = `$FirebaseSDKVersion = '10.29.0'\n` + podfileContent;
         } else {
           podfileContent = podfileContent.replace(/\$FirebaseSDKVersion\s*=\s*['"][\d\.]+['"]/, `$FirebaseSDKVersion = '10.29.0'`);
         }
         
+        // Add SDWebImage pin for Xcode 14 compatibility
+        if (!podfileContent.includes('SDWebImage')) {
+          podfileContent = podfileContent.replace(/platform :ios, ['"](\d+\.\d+)['"]/, "platform :ios, '$1'\n\npod 'SDWebImage', '~> 5.17.0'");
+        }
+
         // Downgrade invertase pre-compiled framework if present
         podfileContent = podfileContent.replace(/(https:\/\/github\.com\/invertase\/firestore-ios-sdk-frameworks\.git',\s*:tag\s*=>\s*')[\d\.]+(')/g, "$110.29.0$2");
         
