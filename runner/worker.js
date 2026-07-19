@@ -172,6 +172,14 @@ async function processBuilds() {
 
       if (fs.existsSync(path.join(iosDir, 'Podfile'))) {
         await appendLog(build.id, `\n🦕 Installing CocoaPods dependencies...\n`);
+        
+        // Fix for Xcode 14.2: Force Firebase SDK to 10.29.0 since v11 requires Xcode 15+
+        const podfilePath = path.join(iosDir, 'Podfile');
+        let podfileContent = fs.readFileSync(podfilePath, 'utf8');
+        if (!podfileContent.includes('$FirebaseSDKVersion')) {
+          fs.writeFileSync(podfilePath, `$FirebaseSDKVersion = '10.29.0'\n` + podfileContent);
+        }
+
         await runCommand('pod', ['install', '--repo-update'], iosDir, build.id, fastlaneEnv);
       }
 
