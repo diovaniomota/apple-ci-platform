@@ -184,9 +184,9 @@ async function processBuilds() {
           podfileContent = podfileContent.replace(/\$FirebaseSDKVersion\s*=\s*['"][\d\.]+['"]/, `$FirebaseSDKVersion = '10.29.0'`);
         }
         
-        // Add SDWebImage pin for Xcode 14 compatibility
-        if (!podfileContent.includes('SDWebImage')) {
-          podfileContent = podfileContent.replace(/platform :ios, ['"](\d+\.\d+)['"]/, "platform :ios, '$1'\n\npod 'SDWebImage', '~> 5.17.0'");
+        // Add SDWebImage pin for Xcode 14 compatibility safely
+        if (!podfileContent.includes("pod 'SDWebImage'")) {
+          podfileContent = podfileContent.replace(/\$FirebaseSDKVersion = '10.29.0'/, "$FirebaseSDKVersion = '10.29.0'\npod 'SDWebImage', '~> 5.17.0'");
         }
 
         // Downgrade invertase pre-compiled framework if present
