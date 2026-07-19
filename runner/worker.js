@@ -31,15 +31,42 @@ async function loadSettings() {
   return map;
 }
 
+let logQueue = [];
+let isWritingLog = false;
+
 async function appendLog(buildId, text) {
-  try {
-    const build = await prisma.build.findUnique({ where: { id: buildId } });
-    await prisma.build.update({
-      where: { id: buildId },
-      data: { logs: build.logs + text }
-    });
-  } catch (e) {
-    console.error('Failed to append log:', e);
+  logQueue.push({ buildId, text });
+  processLogQueue();
+}
+
+async function processLogQueue() {
+  if (isWritingLog || logQueue.length === 0) return;
+  isWritingLog = true;
+  
+  const aggregated = {};
+  while (logQueue.length > 0) {
+    const item = logQueue.shift();
+    if (!aggregated[item.buildId]) aggregated[item.buildId] = '';
+    aggregated[item.buildId] += item.text;
+  }
+  
+  for (const [id, text] of Object.entries(aggregated)) {
+    try {
+      const build = await prisma.build.findUnique({ where: { id } });
+      if (build) {
+        await prisma.build.update({
+          where: { id },
+          data: { logs: build.logs + text }
+        });
+      }
+    } catch (e) {
+      console.error('Failed to append log:', e);
+    }
+  }
+  
+  isWritingLog = false;
+  if (logQueue.length > 0) {
+    processLogQueue();
   }
 }
 
@@ -68,15 +95,21 @@ function runCommand(cmd, args, cwd, buildId, extraEnv = {}) {
   });
 }
 
+let isProcessingBuilds = false;
+
 async function processBuilds() {
-  const build = await prisma.build.findFirst({
-    where: { status: 'PENDING' },
-    include: { project: true }
-  });
+  if (isProcessingBuilds) return;
+  isProcessingBuilds = true;
 
-  if (!build) return;
+  try {
+    const build = await prisma.build.findFirst({
+      where: { status: 'PENDING' },
+      include: { project: true }
+    });
 
-  console.log(`\n▶ Processing build: ${build.id}`);
+    if (!build) return;
+
+    console.log(`\n▶ Processing build: ${build.id}`);
   await prisma.build.update({
     where: { id: build.id },
     data: { status: 'RUNNING', logs: '🚀 Build started by Apple CI Platform\n' }
@@ -164,6 +197,8 @@ async function processBuilds() {
     try {
       fs.rmSync(projectDir, { recursive: true, force: true });
     } catch {}
+  } finally {
+    isProcessingBuilds = false;
   }
 }
 
