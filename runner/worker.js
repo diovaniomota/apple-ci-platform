@@ -176,9 +176,18 @@ async function processBuilds() {
         // Fix for Xcode 14.2: Force Firebase SDK to 10.29.0 since v11 requires Xcode 15+
         const podfilePath = path.join(iosDir, 'Podfile');
         let podfileContent = fs.readFileSync(podfilePath, 'utf8');
+        
+        // Downgrade Firebase SDK
         if (!podfileContent.includes('$FirebaseSDKVersion')) {
-          fs.writeFileSync(podfilePath, `$FirebaseSDKVersion = '10.29.0'\n` + podfileContent);
+          podfileContent = `$FirebaseSDKVersion = '10.29.0'\n` + podfileContent;
+        } else {
+          podfileContent = podfileContent.replace(/\$FirebaseSDKVersion\s*=\s*['"][\d\.]+['"]/, `$FirebaseSDKVersion = '10.29.0'`);
         }
+        
+        // Downgrade invertase pre-compiled framework if present
+        podfileContent = podfileContent.replace(/(https:\/\/github\.com\/invertase\/firestore-ios-sdk-frameworks\.git',\s*:tag\s*=>\s*')[\d\.]+(')/g, "$110.29.0$2");
+        
+        fs.writeFileSync(podfilePath, podfileContent);
 
         await runCommand('pod', ['install', '--repo-update'], iosDir, build.id, fastlaneEnv);
       }
