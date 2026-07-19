@@ -27,7 +27,7 @@ platform :ios do
       clean: true,
       output_directory: "./build",
       output_name: "{{SCHEME}}.ipa",
-      xcargs: "DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']}"
+      xcargs: "DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']} CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER='match AppStore {{BUNDLE_ID}}' CODE_SIGN_IDENTITY='Apple Distribution'"
     )
 
     # Upload to TestFlight via API Key
