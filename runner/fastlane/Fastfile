@@ -20,6 +20,16 @@ platform :ios do
       readonly: false
     )
 
+    # Update Xcode project signing settings directly for the Runner target
+    # This prevents CocoaPods targets from inheriting the profile override
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "Runner.xcodeproj",
+      team_id: ENV["FASTLANE_TEAM_ID"],
+      profile_name: "match AppStore {{BUNDLE_ID}}",
+      code_sign_identity: "Apple Distribution"
+    )
+
     # Build the app
     gym(
       scheme: "{{SCHEME}}",
@@ -27,7 +37,7 @@ platform :ios do
       clean: true,
       output_directory: "./build",
       output_name: "{{SCHEME}}.ipa",
-      xcargs: "DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']} CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER='match AppStore {{BUNDLE_ID}}' CODE_SIGN_IDENTITY='Apple Distribution'"
+      xcargs: "DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']}"
     )
 
     # Upload to TestFlight via API Key
