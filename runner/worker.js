@@ -189,6 +189,16 @@ async function processBuilds() {
         
         fs.writeFileSync(podfilePath, podfileContent);
 
+        // Fix for GoogleSignIn 8.0 conflicting with Firebase 10.29.0
+        const gsiPodspecPath1 = path.join(iosDir, '.symlinks', 'plugins', 'google_sign_in_ios', 'darwin', 'google_sign_in_ios.podspec');
+        const gsiPodspecPath2 = path.join(iosDir, '.symlinks', 'plugins', 'google_sign_in_ios', 'ios', 'google_sign_in_ios.podspec');
+        const gsiPodspecPath = fs.existsSync(gsiPodspecPath1) ? gsiPodspecPath1 : (fs.existsSync(gsiPodspecPath2) ? gsiPodspecPath2 : null);
+        if (gsiPodspecPath) {
+          let gsiPodspec = fs.readFileSync(gsiPodspecPath, 'utf8');
+          gsiPodspec = gsiPodspec.replace(/s\.dependency\s+['"]GoogleSignIn['"]\s*,\s*['"]~>\s*8\.0(\.0)?['"]/g, "s.dependency 'GoogleSignIn', '~> 7.1.0'");
+          fs.writeFileSync(gsiPodspecPath, gsiPodspec);
+        }
+
         await runCommand('pod', ['install', '--repo-update'], iosDir, build.id, fastlaneEnv);
       }
 
