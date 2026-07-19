@@ -197,7 +197,6 @@ async function processBuilds() {
     try {
       fs.rmSync(projectDir, { recursive: true, force: true });
     } catch {}
-  } finally {
     isProcessingBuilds = false;
   }
 }
