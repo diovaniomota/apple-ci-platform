@@ -197,7 +197,7 @@ async function processBuilds() {
     } finally {
       try {
         fs.rmSync(projectDir, { recursive: true, force: true });
-      } catch {}
+      } catch (e) {}
     }
   } catch (e) {
     console.error("Worker process error:", e);
