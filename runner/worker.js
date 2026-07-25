@@ -2,19 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const lockFile = '/Users/diovaniomota/Documents/apple-ci-platform/worker.lock';
-try {
-  // If lockfile exists and is younger than 5 minutes, exit
-  if (fs.existsSync(lockFile)) {
-    const stats = fs.statSync(lockFile);
-    if (Date.now() - stats.mtimeMs < 5 * 60 * 1000) {
-      console.log('Worker already running. Exiting.');
-      process.exit(0);
-    }
-  }
-  fs.writeFileSync(lockFile, process.pid.toString());
-  setInterval(() => fs.writeFileSync(lockFile, process.pid.toString()), 60000);
-} catch (e) {}
+
 
 const { spawn } = require('child_process');
 const { PrismaClient } = require('@prisma/client');
