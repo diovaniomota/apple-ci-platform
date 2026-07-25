@@ -224,38 +224,7 @@ async function processBuilds() {
 
         await runCommand('pod', ['install', '--repo-update'], iosDir, build.id, fastlaneEnv);
 
-        // Patch FirebaseStorage Swift 5.8 incompatibility with Xcode 14.2
-        
-        
-        try {
-          const storagePodPath = path.join(iosDir, 'Pods/FirebaseStorage/FirebaseStorage/Sources');
-          const listTaskFile = path.join(storagePodPath, 'Internal/StorageListTask.swift');
-          
-          await appendLog(build.id, `\\n🔎 Checking file: ${listTaskFile} (exists: ${fs.existsSync(listTaskFile)})\\n`);
-          if (fs.existsSync(listTaskFile)) {
-            let content = fs.readFileSync(listTaskFile, 'utf8');
-            content = content.replace(/if let pageSize\s*\{/g, 'if let pageSize = self.pageSize {');
-            content = content.replace(/if let previousPageToken\s*\{/g, 'if let previousPageToken = self.previousPageToken {');
-            fs.chmodSync(listTaskFile, 0o666);
-            fs.writeFileSync(listTaskFile, content);
-            await appendLog(build.id, "✅ PATCH APPLIED SUCCESSFULLY TO " + listTaskFile + "\\n");
-          } else {
-            await appendLog(build.id, "❌ PATCH FAILED: File not found - " + listTaskFile + "\\n");
-          }
-          
-          const downloadTaskFile = path.join(storagePodPath, 'StorageDownloadTask.swift');
-          await appendLog(build.id, `🔎 Checking file: ${downloadTaskFile} (exists: ${fs.existsSync(downloadTaskFile)})\\n`);
-          if (fs.existsSync(downloadTaskFile)) {
-            let content = fs.readFileSync(downloadTaskFile, 'utf8');
-            content = content.replace(/if let fileURL\s*\{/g, 'if let fileURL = self.fileURL {');
-            fs.chmodSync(downloadTaskFile, 0o666);
-            fs.writeFileSync(downloadTaskFile, content);
-            await appendLog(build.id, "✅ PATCH APPLIED SUCCESSFULLY TO " + downloadTaskFile + "\\n");
-          }
-          
-        } catch (e) {
-          await appendLog(build.id, "❌ Failed to apply patches: " + e.stack + "\\n");
-        }
+        // Xcode 26 natively supports Swift 5.7+ shorthand if-let syntax; no patching needed.
 
 
       }
