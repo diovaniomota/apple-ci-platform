@@ -1,7 +1,23 @@
-const { spawn } = require('child_process');
-const { PrismaClient } = require('@prisma/client');
+
 const fs = require('fs');
 const path = require('path');
+
+const lockFile = '/Users/diovaniomota/Documents/apple-ci-platform/worker.lock';
+try {
+  // If lockfile exists and is younger than 5 minutes, exit
+  if (fs.existsSync(lockFile)) {
+    const stats = fs.statSync(lockFile);
+    if (Date.now() - stats.mtimeMs < 5 * 60 * 1000) {
+      console.log('Worker already running. Exiting.');
+      process.exit(0);
+    }
+  }
+  fs.writeFileSync(lockFile, process.pid.toString());
+  setInterval(() => fs.writeFileSync(lockFile, process.pid.toString()), 60000);
+} catch (e) {}
+
+const { spawn } = require('child_process');
+const { PrismaClient } = require('@prisma/client');
 
 require('dotenv').config();
 const prisma = new PrismaClient({
@@ -115,7 +131,7 @@ async function processBuilds() {
       data: { status: 'RUNNING', logs: '🚀 Build started by Apple CI Platform\n' }
     });
 
-    const projectDir = path.join(WORKSPACE_DIR, build.id);
+    const projectDir = path.join(WORKSPACE_DIR, `${build.id}-${Date.now()}`);
 
     try {
       const settings = await loadSettings();
@@ -123,6 +139,8 @@ async function processBuilds() {
       const fastlaneEnv = {
         FASTLANE_HIDE_CHANGELOG: '1',
         FASTLANE_SKIP_UPDATE_CHECK: '1',
+        FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: '120',
+        FASTLANE_XCODEBUILD_SETTINGS_RETRIES: '6',
       };
 
       if (settings.APPLE_ID && !settings.ASC_KEY_ID) fastlaneEnv.FASTLANE_USER = settings.APPLE_ID;
@@ -150,6 +168,10 @@ async function processBuilds() {
       
       if (isFlutter) {
         await appendLog(build.id, `\n🦋 Flutter project detected...\n`);
+        const envPath = path.join(projectDir, '.env');
+        if (!fs.existsSync(envPath)) {
+          fs.writeFileSync(envPath, '# Auto-created .env file for CI build\n');
+        }
         const flutterCmd = path.join(process.env.HOME || '/Users/diovaniomota', 'development/flutter/bin/flutter');
         await runCommand(flutterCmd, ['clean'], projectDir, build.id, fastlaneEnv);
         await runCommand(flutterCmd, ['pub', 'get'], projectDir, build.id, fastlaneEnv);
@@ -170,27 +192,23 @@ async function processBuilds() {
 
       fs.writeFileSync(path.join(fastlaneDir, 'Fastfile'), fastfileContent);
 
+      // Automatically patch PRODUCT_BUNDLE_IDENTIFIER in project.pbxproj
+      const pbxprojPath = path.join(iosDir, 'Runner.xcodeproj', 'project.pbxproj');
+      if (fs.existsSync(pbxprojPath)) {
+        let pbxprojContent = fs.readFileSync(pbxprojPath, 'utf8');
+        pbxprojContent = pbxprojContent.replace(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*[^;]+;/g, `PRODUCT_BUNDLE_IDENTIFIER = ${build.project.bundleId};`);
+        fs.writeFileSync(pbxprojPath, pbxprojContent);
+      }
+
       if (fs.existsSync(path.join(iosDir, 'Podfile'))) {
         await appendLog(build.id, `\n🦕 Installing CocoaPods dependencies...\n`);
         
-        // Fix for Xcode 14.2: Force Firebase SDK to 10.29.0 since v11 requires Xcode 15+
+        // Xcode 26 - no Firebase SDK version pin needed, use latest compatible version
         const podfilePath = path.join(iosDir, 'Podfile');
         let podfileContent = fs.readFileSync(podfilePath, 'utf8');
         
-        // Downgrade Firebase SDK and force SDWebImage to < 5.18.0
-        if (!podfileContent.includes('$FirebaseSDKVersion')) {
-          podfileContent = `$FirebaseSDKVersion = '10.29.0'\n` + podfileContent;
-        } else {
-          podfileContent = podfileContent.replace(/\$FirebaseSDKVersion\s*=\s*['"][\d\.]+['"]/, `$FirebaseSDKVersion = '10.29.0'`);
-        }
-        
-        // Add SDWebImage pin for Xcode 14 compatibility safely
-        if (!podfileContent.includes("pod 'SDWebImage'")) {
-          podfileContent = podfileContent.replace(/\$FirebaseSDKVersion = '10.29.0'/, "$FirebaseSDKVersion = '10.29.0'\npod 'SDWebImage', '~> 5.17.0'");
-        }
-
-        // Downgrade invertase pre-compiled framework if present
-        podfileContent = podfileContent.replace(/(https:\/\/github\.com\/invertase\/firestore-ios-sdk-frameworks\.git',\s*:tag\s*=>\s*')[\d\.]+(')/g, "$110.29.0$2");
+        // Remove any old Firebase SDK version pins that were needed for Xcode 14.2
+        podfileContent = podfileContent.replace(/\$FirebaseSDKVersion\s*=\s*['"][\d\.]+['"]\n?/g, '');
         
         fs.writeFileSync(podfilePath, podfileContent);
 
@@ -205,12 +223,47 @@ async function processBuilds() {
         }
 
         await runCommand('pod', ['install', '--repo-update'], iosDir, build.id, fastlaneEnv);
+
+        // Patch FirebaseStorage Swift 5.8 incompatibility with Xcode 14.2
+        
+        
+        try {
+          const storagePodPath = path.join(iosDir, 'Pods/FirebaseStorage/FirebaseStorage/Sources');
+          const listTaskFile = path.join(storagePodPath, 'Internal/StorageListTask.swift');
+          
+          await appendLog(build.id, `\\n🔎 Checking file: ${listTaskFile} (exists: ${fs.existsSync(listTaskFile)})\\n`);
+          if (fs.existsSync(listTaskFile)) {
+            let content = fs.readFileSync(listTaskFile, 'utf8');
+            content = content.replace(/if let pageSize\s*\{/g, 'if let pageSize = self.pageSize {');
+            content = content.replace(/if let previousPageToken\s*\{/g, 'if let previousPageToken = self.previousPageToken {');
+            fs.chmodSync(listTaskFile, 0o666);
+            fs.writeFileSync(listTaskFile, content);
+            await appendLog(build.id, "✅ PATCH APPLIED SUCCESSFULLY TO " + listTaskFile + "\\n");
+          } else {
+            await appendLog(build.id, "❌ PATCH FAILED: File not found - " + listTaskFile + "\\n");
+          }
+          
+          const downloadTaskFile = path.join(storagePodPath, 'StorageDownloadTask.swift');
+          await appendLog(build.id, `🔎 Checking file: ${downloadTaskFile} (exists: ${fs.existsSync(downloadTaskFile)})\\n`);
+          if (fs.existsSync(downloadTaskFile)) {
+            let content = fs.readFileSync(downloadTaskFile, 'utf8');
+            content = content.replace(/if let fileURL\s*\{/g, 'if let fileURL = self.fileURL {');
+            fs.chmodSync(downloadTaskFile, 0o666);
+            fs.writeFileSync(downloadTaskFile, content);
+            await appendLog(build.id, "✅ PATCH APPLIED SUCCESSFULLY TO " + downloadTaskFile + "\\n");
+          }
+          
+        } catch (e) {
+          await appendLog(build.id, "❌ Failed to apply patches: " + e.stack + "\\n");
+        }
+
+
       }
 
       await appendLog(build.id, `\n🔨 Building with Xcode...\n`);
       await runCommand('fastlane', ['build_and_upload'], iosDir, build.id, fastlaneEnv);
 
-      await appendLog(build.id, `\n✅ Build completed and uploaded to TestFlight!\n`);
+      await appendLog(build.id, `\n✅ Build completed successfully!\n`);
       await prisma.build.update({ where: { id: build.id }, data: { status: 'SUCCESS' } });
       console.log(`✅ Build ${build.id} succeeded`);
 
