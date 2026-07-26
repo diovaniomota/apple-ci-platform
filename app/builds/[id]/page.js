@@ -507,7 +507,7 @@ export default function BuildLiveLogs() {
           <div style={{ display: 'flex' }}>
             <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Machine:</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>
-              Mac mini M2
+              {build.machine || 'Mac mini'}
             </span>
           </div>
 
