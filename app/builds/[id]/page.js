@@ -9,7 +9,8 @@ import {
   Maximize2,
   Minimize2,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Ban
 } from 'lucide-react';
 
 /**
@@ -111,7 +112,6 @@ function parseLogsToSteps(rawLogs, buildStatus, nowMs) {
     }
 
     if (!hasExplicitMarkers) {
-      // Fallback sequential mapping for legacy logs without step markers
       if (/📦 Cloning repository/i.test(line)) currentId = 'clone';
       else if (/Installing SDKs|Xcode version/i.test(line)) currentId = 'sdks';
       else if (/🦋 Flutter project|Resolving dependencies|Downloading packages/i.test(line)) currentId = 'packages';
@@ -133,7 +133,6 @@ function parseLogsToSteps(rawLogs, buildStatus, nowMs) {
     }
   });
 
-  // Calculate live/real durations and accurate status per step
   return CODEMAGIC_STEPS.map((def) => {
     const step = stepDataMap[def.id];
     const stepText = step.lines.join('\n');
@@ -144,8 +143,8 @@ function parseLogsToSteps(rawLogs, buildStatus, nowMs) {
     if (hasError) {
       status = 'FAILED';
     } else if (step.startMs && !step.endMs) {
-      if (buildStatus === 'FAILED') {
-        status = 'FAILED';
+      if (buildStatus === 'FAILED' || buildStatus === 'CANCELLED') {
+        status = buildStatus;
       } else {
         status = 'RUNNING';
       }
@@ -174,9 +173,9 @@ export default function BuildLiveLogs() {
   const [expandedSteps, setExpandedSteps] = useState({});
   const [fullscreenStep, setFullscreenStep] = useState(null);
   const [nowMs, setNowMs] = useState(Date.now());
+  const [cancelling, setCancelling] = useState(false);
   const terminalRefs = useRef({});
 
-  // Timer for live duration update while build is running
   useEffect(() => {
     const timer = setInterval(() => {
       setNowMs(Date.now());
@@ -191,7 +190,7 @@ export default function BuildLiveLogs() {
         .then(res => res.json())
         .then(data => {
           setBuild(data);
-          if (data.status === 'SUCCESS' || data.status === 'FAILED') {
+          if (data.status === 'SUCCESS' || data.status === 'FAILED' || data.status === 'CANCELLED') {
             if (interval) clearInterval(interval);
           }
         })
@@ -206,11 +205,30 @@ export default function BuildLiveLogs() {
     };
   }, [id]);
 
+  const handleCancelBuild = async () => {
+    if (!confirm('Deseja realmente cancelar este build?')) return;
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/builds/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel' })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setBuild(updated);
+      }
+    } catch (e) {
+      console.error("Failed to cancel build:", e);
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const steps = useMemo(() => {
     return parseLogsToSteps(build?.logs || '', build?.status, nowMs);
   }, [build?.logs, build?.status, nowMs]);
 
-  // Auto-expand FAILED step or currently RUNNING step
   useEffect(() => {
     if (steps.length > 0) {
       setExpandedSteps(prev => {
@@ -280,6 +298,31 @@ export default function BuildLiveLogs() {
             {build.status}
           </span>
         </div>
+
+        {/* Cancel Build Button */}
+        {(build.status === 'RUNNING' || build.status === 'PENDING') && (
+          <button
+            onClick={handleCancelBuild}
+            disabled={cancelling}
+            style={{
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#ef4444',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+              cursor: cancelling ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            {cancelling ? <Loader2 size={15} className="animate-spin" /> : <Ban size={15} />}
+            <span>{cancelling ? 'Cancelando...' : 'Cancelar Build'}</span>
+          </button>
+        )}
       </div>
 
       {/* Codemagic Subtitle */}

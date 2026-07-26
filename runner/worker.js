@@ -45,6 +45,15 @@ async function endStep(buildId, stepName) {
   await appendLog(buildId, `=== STEP END: ${stepName} [${ts}] ===\n`);
 }
 
+async function isBuildCancelled(buildId) {
+  try {
+    const b = await prisma.build.findUnique({ where: { id: buildId }, select: { status: true } });
+    return b?.status === 'CANCELLED';
+  } catch (e) {
+    return false;
+  }
+}
+
 function runCommand(command, args, cwd, buildId, envVars = {}) {
   return new Promise((resolve, reject) => {
     console.log(`Executing: ${command} ${args.join(' ')} in ${cwd}`);
@@ -52,6 +61,16 @@ function runCommand(command, args, cwd, buildId, envVars = {}) {
       cwd,
       env: { ...process.env, ...envVars }
     });
+
+    const cancelCheckInterval = setInterval(async () => {
+      if (await isBuildCancelled(buildId)) {
+        clearInterval(cancelCheckInterval);
+        try {
+          proc.kill('SIGKILL');
+        } catch (e) {}
+        reject(new Error('Build cancelado pelo usuário'));
+      }
+    }, 1500);
 
     proc.stdout.on('data', async (data) => {
       const text = data.toString();
@@ -66,6 +85,7 @@ function runCommand(command, args, cwd, buildId, envVars = {}) {
     });
 
     proc.on('close', (code) => {
+      clearInterval(cancelCheckInterval);
       if (code === 0) {
         resolve();
       } else {
@@ -74,6 +94,7 @@ function runCommand(command, args, cwd, buildId, envVars = {}) {
     });
 
     proc.on('error', (err) => {
+      clearInterval(cancelCheckInterval);
       reject(err);
     });
   });
@@ -111,6 +132,8 @@ async function processBuilds() {
     const projectDir = path.join(WORKSPACE_DIR, `${build.id}-${Date.now()}`);
 
     try {
+      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
+
       // STEP 1: Preparing build machine
       await startStep(build.id, 'Preparing build machine');
       await appendLog(build.id, `🚀 Build started by Apple CI Platform\nUser-defined environment variables loaded\n`);
@@ -140,6 +163,8 @@ async function processBuilds() {
       }
       await endStep(build.id, 'Preparing build machine');
 
+      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
+
       // STEP 2: Fetching app sources
       await startStep(build.id, 'Fetching app sources');
       await appendLog(build.id, `📦 Cloning repository...\n   ${build.project.repoUrl} [${build.project.branch}]\n`);
@@ -153,6 +178,8 @@ async function processBuilds() {
       await startStep(build.id, 'Installing SDKs');
       await appendLog(build.id, `Checking installed Xcode and SDK tools...\n`);
       await endStep(build.id, 'Installing SDKs');
+
+      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
 
       // STEP 4: Get packages
       if (isFlutter) {
@@ -168,6 +195,8 @@ async function processBuilds() {
         await endStep(build.id, 'Get packages');
       }
 
+      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
+
       // STEP 5: Validate signing inputs
       await startStep(build.id, 'Validate signing inputs');
       await appendLog(build.id, `Validating Apple Team ID and bundle identifier (${build.project.bundleId})...\n`);
@@ -177,6 +206,8 @@ async function processBuilds() {
       await startStep(build.id, 'Initialize keychain');
       await appendLog(build.id, `Initializing build keychain...\n`);
       await endStep(build.id, 'Initialize keychain');
+
+      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
 
       // STEP 7: Fetch signing files & Configure Fastlane
       await startStep(build.id, 'Fetch signing files');
@@ -203,6 +234,8 @@ async function processBuilds() {
       }
       await endStep(build.id, 'Fetch signing files');
 
+      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
+
       // STEP 8: Add certificates to keychain (CocoaPods)
       if (fs.existsSync(path.join(iosDir, 'Podfile'))) {
         await startStep(build.id, 'Add certificates to keychain');
@@ -224,16 +257,22 @@ async function processBuilds() {
         await endStep(build.id, 'Add certificates to keychain');
       }
 
+      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
+
       // STEP 9: Apply provisioning profiles
       await startStep(build.id, 'Apply provisioning profiles');
       await appendLog(build.id, `Applying code signing and profiles...\n`);
       await endStep(build.id, 'Apply provisioning profiles');
+
+      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
 
       // STEP 10: Build iOS
       await startStep(build.id, 'Build iOS');
       await appendLog(build.id, `🔨 Building with Xcode...\n`);
       await runCommand('fastlane', ['build_and_upload'], iosDir, build.id, fastlaneEnv);
       await endStep(build.id, 'Build iOS');
+
+      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
 
       // STEP 11: Publishing
       await startStep(build.id, 'Publishing');
@@ -250,9 +289,15 @@ async function processBuilds() {
       console.log(`✅ Build ${build.id} succeeded`);
 
     } catch (err) {
-      console.error(`❌ Build ${build.id} failed:`, err.message);
-      await appendLog(build.id, `\n❌ Build failed: ${err.message}\n`);
-      await prisma.build.update({ where: { id: build.id }, data: { status: 'FAILED' } });
+      if (err.message === 'Build cancelado pelo usuário') {
+        console.log(`🛑 Build ${build.id} was cancelled by user`);
+        await appendLog(build.id, `\n🛑 Build cancelado pelo usuário.\n`);
+        await prisma.build.update({ where: { id: build.id }, data: { status: 'CANCELLED' } });
+      } else {
+        console.error(`❌ Build ${build.id} failed:`, err.message);
+        await appendLog(build.id, `\n❌ Build failed: ${err.message}\n`);
+        await prisma.build.update({ where: { id: build.id }, data: { status: 'FAILED' } });
+      }
     } finally {
       try {
         fs.rmSync(projectDir, { recursive: true, force: true });
