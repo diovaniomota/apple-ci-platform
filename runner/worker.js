@@ -14,7 +14,6 @@ const prisma = new PrismaClient({
 
 const WORKSPACE_DIR = path.join(__dirname, '../builds-workspace');
 
-// Ensure workspace directory exists
 if (!fs.existsSync(WORKSPACE_DIR)) {
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 }
@@ -34,6 +33,16 @@ async function appendLog(buildId, text) {
   } catch (e) {
     console.error(`Failed to append log for build ${buildId}:`, e.message);
   }
+}
+
+async function startStep(buildId, stepName) {
+  const ts = new Date().toISOString();
+  await appendLog(buildId, `=== STEP START: ${stepName} [${ts}] ===\n`);
+}
+
+async function endStep(buildId, stepName) {
+  const ts = new Date().toISOString();
+  await appendLog(buildId, `=== STEP END: ${stepName} [${ts}] ===\n`);
 }
 
 function runCommand(command, args, cwd, buildId, envVars = {}) {
@@ -103,7 +112,8 @@ async function processBuilds() {
 
     try {
       // STEP 1: Preparing build machine
-      await appendLog(build.id, `=== STEP START: Preparing build machine ===\n🚀 Build started by Apple CI Platform\nUser-defined environment variables loaded\n`);
+      await startStep(build.id, 'Preparing build machine');
+      await appendLog(build.id, `🚀 Build started by Apple CI Platform\nUser-defined environment variables loaded\n`);
       const settings = await loadSettings();
 
       const fastlaneEnv = {
@@ -128,23 +138,26 @@ async function processBuilds() {
       if (fs.existsSync(projectDir)) {
         fs.rmSync(projectDir, { recursive: true, force: true });
       }
-      await appendLog(build.id, `=== STEP END: Preparing build machine ===\n`);
+      await endStep(build.id, 'Preparing build machine');
 
       // STEP 2: Fetching app sources
-      await appendLog(build.id, `=== STEP START: Fetching app sources ===\n📦 Cloning repository...\n   ${build.project.repoUrl} [${build.project.branch}]\n`);
+      await startStep(build.id, 'Fetching app sources');
+      await appendLog(build.id, `📦 Cloning repository...\n   ${build.project.repoUrl} [${build.project.branch}]\n`);
       await runCommand('git', ['clone', '-b', build.project.branch, '--depth=1', build.project.repoUrl, projectDir], WORKSPACE_DIR, build.id, fastlaneEnv);
-      await appendLog(build.id, `=== STEP END: Fetching app sources ===\n`);
+      await endStep(build.id, 'Fetching app sources');
 
       const isFlutter = fs.existsSync(path.join(projectDir, 'pubspec.yaml'));
       const iosDir = isFlutter ? path.join(projectDir, 'ios') : projectDir;
 
       // STEP 3: Installing SDKs
-      await appendLog(build.id, `=== STEP START: Installing SDKs ===\nChecking installed Xcode and SDK tools...\n`);
-      await appendLog(build.id, `=== STEP END: Installing SDKs ===\n`);
+      await startStep(build.id, 'Installing SDKs');
+      await appendLog(build.id, `Checking installed Xcode and SDK tools...\n`);
+      await endStep(build.id, 'Installing SDKs');
 
       // STEP 4: Get packages
       if (isFlutter) {
-        await appendLog(build.id, `=== STEP START: Get packages ===\n🦋 Flutter project detected...\n`);
+        await startStep(build.id, 'Get packages');
+        await appendLog(build.id, `🦋 Flutter project detected...\n`);
         const envPath = path.join(projectDir, '.env');
         if (!fs.existsSync(envPath)) {
           fs.writeFileSync(envPath, '# Auto-created .env file for CI build\n');
@@ -152,19 +165,22 @@ async function processBuilds() {
         const flutterCmd = path.join(process.env.HOME || '/Users/diovaniomota', 'development/flutter/bin/flutter');
         await runCommand(flutterCmd, ['clean'], projectDir, build.id, fastlaneEnv);
         await runCommand(flutterCmd, ['pub', 'get'], projectDir, build.id, fastlaneEnv);
-        await appendLog(build.id, `=== STEP END: Get packages ===\n`);
+        await endStep(build.id, 'Get packages');
       }
 
       // STEP 5: Validate signing inputs
-      await appendLog(build.id, `=== STEP START: Validate signing inputs ===\nValidating Apple Team ID and bundle identifier (${build.project.bundleId})...\n`);
-      await appendLog(build.id, `=== STEP END: Validate signing inputs ===\n`);
+      await startStep(build.id, 'Validate signing inputs');
+      await appendLog(build.id, `Validating Apple Team ID and bundle identifier (${build.project.bundleId})...\n`);
+      await endStep(build.id, 'Validate signing inputs');
 
       // STEP 6: Initialize keychain
-      await appendLog(build.id, `=== STEP START: Initialize keychain ===\nInitializing build keychain...\n`);
-      await appendLog(build.id, `=== STEP END: Initialize keychain ===\n`);
+      await startStep(build.id, 'Initialize keychain');
+      await appendLog(build.id, `Initializing build keychain...\n`);
+      await endStep(build.id, 'Initialize keychain');
 
       // STEP 7: Fetch signing files & Configure Fastlane
-      await appendLog(build.id, `=== STEP START: Fetch signing files ===\n⚙️ Configuring Fastlane...\n`);
+      await startStep(build.id, 'Fetch signing files');
+      await appendLog(build.id, `⚙️ Configuring Fastlane...\n`);
       const fastlaneDir = path.join(iosDir, 'fastlane');
       if (!fs.existsSync(fastlaneDir)) {
         fs.mkdirSync(fastlaneDir, { recursive: true });
@@ -185,11 +201,12 @@ async function processBuilds() {
         pbxprojContent = pbxprojContent.replace(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*[^;]+;/g, `PRODUCT_BUNDLE_IDENTIFIER = ${build.project.bundleId};`);
         fs.writeFileSync(pbxprojPath, pbxprojContent);
       }
-      await appendLog(build.id, `=== STEP END: Fetch signing files ===\n`);
+      await endStep(build.id, 'Fetch signing files');
 
-      // STEP 8: Add certificates to keychain / CocoaPods
+      // STEP 8: Add certificates to keychain (CocoaPods)
       if (fs.existsSync(path.join(iosDir, 'Podfile'))) {
-        await appendLog(build.id, `=== STEP START: Add certificates to keychain ===\n🦕 Installing CocoaPods dependencies...\n`);
+        await startStep(build.id, 'Add certificates to keychain');
+        await appendLog(build.id, `🦕 Installing CocoaPods dependencies...\n`);
         const podfilePath = path.join(iosDir, 'Podfile');
         let podfileContent = fs.readFileSync(podfilePath, 'utf8');
         podfileContent = podfileContent.replace(/\$FirebaseSDKVersion\s*=\s*['"][\d\.]+['"]\n?/g, '');
@@ -204,20 +221,29 @@ async function processBuilds() {
         }
 
         await runCommand('pod', ['install', '--repo-update'], iosDir, build.id, fastlaneEnv);
-        await appendLog(build.id, `=== STEP END: Add certificates to keychain ===\n`);
+        await endStep(build.id, 'Add certificates to keychain');
       }
 
-      // STEP 9: Apply provisioning profiles & STEP 10: Build iOS & STEP 11: Publishing
-      await appendLog(build.id, `=== STEP START: Apply provisioning profiles ===\nApplying code signing and profiles...\n`);
-      await appendLog(build.id, `=== STEP END: Apply provisioning profiles ===\n`);
+      // STEP 9: Apply provisioning profiles
+      await startStep(build.id, 'Apply provisioning profiles');
+      await appendLog(build.id, `Applying code signing and profiles...\n`);
+      await endStep(build.id, 'Apply provisioning profiles');
 
-      await appendLog(build.id, `=== STEP START: Build iOS ===\n🔨 Building with Xcode...\n`);
+      // STEP 10: Build iOS
+      await startStep(build.id, 'Build iOS');
+      await appendLog(build.id, `🔨 Building with Xcode...\n`);
       await runCommand('fastlane', ['build_and_upload'], iosDir, build.id, fastlaneEnv);
-      await appendLog(build.id, `=== STEP END: Build iOS ===\n`);
+      await endStep(build.id, 'Build iOS');
+
+      // STEP 11: Publishing
+      await startStep(build.id, 'Publishing');
+      await appendLog(build.id, `Uploaded to TestFlight successfully.\n`);
+      await endStep(build.id, 'Publishing');
 
       // STEP 12: Cleaning up
-      await appendLog(build.id, `=== STEP START: Cleaning up ===\nCleaning build workspace...\n`);
-      await appendLog(build.id, `=== STEP END: Cleaning up ===\n`);
+      await startStep(build.id, 'Cleaning up');
+      await appendLog(build.id, `Cleaning build workspace...\n`);
+      await endStep(build.id, 'Cleaning up');
 
       await appendLog(build.id, `\n✅ Build completed successfully!\n`);
       await prisma.build.update({ where: { id: build.id }, data: { status: 'SUCCESS' } });

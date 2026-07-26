@@ -27,70 +27,91 @@ function CodemagicDownloadIcon({ size = 18, color = 'currentColor' }) {
 
 // Fixed Codemagic 12 Steps Definition
 const CODEMAGIC_STEPS = [
-  { id: 'prepare', name: 'Preparing build machine', defaultDuration: '46s' },
-  { id: 'clone', name: 'Fetching app sources', defaultDuration: '5s' },
-  { id: 'sdks', name: 'Installing SDKs', defaultDuration: '< 1s' },
-  { id: 'packages', name: 'Get packages', defaultDuration: '23s' },
-  { id: 'validate_signing', name: 'Validate signing inputs', defaultDuration: '< 1s' },
-  { id: 'init_keychain', name: 'Initialize keychain', defaultDuration: '< 1s' },
-  { id: 'fastlane_config', name: 'Fetch signing files', defaultDuration: '2s' },
-  { id: 'cocoapods', name: 'Add certificates to keychain', defaultDuration: '< 1s' },
-  { id: 'apply_profiles', name: 'Apply provisioning profiles', defaultDuration: '1s' },
-  { id: 'build_ios', name: 'Build iOS', defaultDuration: '1m 51s' },
-  { id: 'publishing', name: 'Publishing', defaultDuration: '1m 10s' },
-  { id: 'cleanup', name: 'Cleaning up', defaultDuration: '3s' }
+  { id: 'prepare', name: 'Preparing build machine' },
+  { id: 'clone', name: 'Fetching app sources' },
+  { id: 'sdks', name: 'Installing SDKs' },
+  { id: 'packages', name: 'Get packages' },
+  { id: 'validate_signing', name: 'Validate signing inputs' },
+  { id: 'init_keychain', name: 'Initialize keychain' },
+  { id: 'fastlane_config', name: 'Fetch signing files' },
+  { id: 'cocoapods', name: 'Add certificates to keychain' },
+  { id: 'apply_profiles', name: 'Apply provisioning profiles' },
+  { id: 'build_ios', name: 'Build iOS' },
+  { id: 'publishing', name: 'Publishing' },
+  { id: 'cleanup', name: 'Cleaning up' }
 ];
 
+function formatDurationMs(diffMs) {
+  if (diffMs === null || diffMs === undefined || diffMs < 0) return '';
+  const sec = Math.max(0, Math.floor(diffMs / 1000));
+  if (sec < 1) return '< 1s';
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const remainingSec = sec % 60;
+  return `${min}m ${remainingSec}s`;
+}
+
 /**
- * Parse raw log string into structured Codemagic-like build steps
+ * Parse raw log string into structured Codemagic-like build steps with real durations and status
  */
-function parseLogsToSteps(rawLogs, buildStatus) {
+function parseLogsToSteps(rawLogs, buildStatus, nowMs) {
   if (!rawLogs) {
     return CODEMAGIC_STEPS.map(s => ({
       ...s,
-      lines: ['No logs available'],
+      lines: [],
       status: 'PENDING',
-      durationStr: s.defaultDuration
+      durationStr: ''
     }));
   }
 
   const lines = rawLogs.split('\n');
 
-  // Check if logs contain explicit STEP START markers
-  const hasExplicitMarkers = lines.some(line => line.startsWith('=== STEP START:'));
-
-  let stepMap = {};
+  let stepDataMap = {};
   CODEMAGIC_STEPS.forEach(s => {
-    stepMap[s.id] = {
+    stepDataMap[s.id] = {
       ...s,
       lines: [],
-      status: 'PENDING',
-      durationStr: s.defaultDuration
+      startMs: null,
+      endMs: null,
+      status: 'PENDING'
     };
   });
 
-  if (hasExplicitMarkers) {
-    let currentId = 'prepare';
-    lines.forEach(line => {
-      const matchStart = line.match(/^=== STEP START: (.+) ===$/);
-      const matchEnd = line.match(/^=== STEP END: (.+) ===$/);
+  let currentId = null;
+  let hasExplicitMarkers = false;
 
-      if (matchStart) {
-        const found = CODEMAGIC_STEPS.find(s => s.name.toLowerCase() === matchStart[1].trim().toLowerCase());
-        if (found) currentId = found.id;
-        return;
-      }
-      if (matchEnd) return;
+  lines.forEach(line => {
+    const matchStart = line.match(/^=== STEP START: (.+?)(?: \[(.*?)\])? ===$/);
+    const matchEnd = line.match(/^=== STEP END: (.+?)(?: \[(.*?)\])? ===$/);
 
-      if (stepMap[currentId]) {
-        stepMap[currentId].lines.push(line);
-        stepMap[currentId].status = 'SUCCESS';
+    if (matchStart) {
+      hasExplicitMarkers = true;
+      const stepName = matchStart[1].trim().toLowerCase();
+      const found = CODEMAGIC_STEPS.find(s => s.name.toLowerCase() === stepName);
+      if (found) {
+        currentId = found.id;
+        if (matchStart[2]) {
+          stepDataMap[currentId].startMs = Date.parse(matchStart[2]);
+        }
+        stepDataMap[currentId].status = 'RUNNING';
       }
-    });
-  } else {
-    // Legacy fallback: divide lines sequentially among standard steps
-    let currentId = 'prepare';
-    lines.forEach(line => {
+      return;
+    }
+
+    if (matchEnd) {
+      const stepName = matchEnd[1].trim().toLowerCase();
+      const found = CODEMAGIC_STEPS.find(s => s.name.toLowerCase() === stepName);
+      if (found) {
+        if (matchEnd[2]) {
+          stepDataMap[found.id].endMs = Date.parse(matchEnd[2]);
+        }
+        stepDataMap[found.id].status = 'SUCCESS';
+      }
+      return;
+    }
+
+    if (!hasExplicitMarkers) {
+      // Fallback sequential mapping for legacy logs without step markers
       if (/📦 Cloning repository/i.test(line)) currentId = 'clone';
       else if (/Installing SDKs|Xcode version/i.test(line)) currentId = 'sdks';
       else if (/🦋 Flutter project|Resolving dependencies|Downloading packages/i.test(line)) currentId = 'packages';
@@ -102,34 +123,47 @@ function parseLogsToSteps(rawLogs, buildStatus) {
       else if (/🔨 Building with Xcode|--- Step: gym ---/i.test(line)) currentId = 'build_ios';
       else if (/Uploading to TestFlight|--- Step: pilot ---/i.test(line)) currentId = 'publishing';
       else if (/Cleaning up/i.test(line)) currentId = 'cleanup';
+    }
 
-      if (stepMap[currentId]) {
-        stepMap[currentId].lines.push(line);
-        stepMap[currentId].status = 'SUCCESS';
+    if (currentId && stepDataMap[currentId]) {
+      stepDataMap[currentId].lines.push(line);
+      if (stepDataMap[currentId].status === 'PENDING') {
+        stepDataMap[currentId].status = 'SUCCESS';
       }
-    });
-  }
+    }
+  });
 
-  // Determine status and error highlights for each step
-  return CODEMAGIC_STEPS.map((def, idx) => {
-    const step = stepMap[def.id];
+  // Calculate live/real durations and accurate status per step
+  return CODEMAGIC_STEPS.map((def) => {
+    const step = stepDataMap[def.id];
     const stepText = step.lines.join('\n');
     const hasError = /❌|Error uploading|FAILED|Command exited with code|build failed/i.test(stepText);
 
-    let status = step.lines.length > 0 ? 'SUCCESS' : 'PENDING';
+    let status = step.status;
+
     if (hasError) {
       status = 'FAILED';
-    } else if (buildStatus === 'RUNNING' && idx === CODEMAGIC_STEPS.findIndex(s => stepMap[s.id].lines.length > 0)) {
-      status = 'RUNNING';
-    } else if (buildStatus === 'FAILED' && idx === CODEMAGIC_STEPS.length - 1 && !stepMap.publishing.lines.length) {
-      // mark active failed step
-      if (hasError) status = 'FAILED';
+    } else if (step.startMs && !step.endMs) {
+      if (buildStatus === 'FAILED') {
+        status = 'FAILED';
+      } else {
+        status = 'RUNNING';
+      }
+    } else if (step.endMs) {
+      status = 'SUCCESS';
+    }
+
+    let durationStr = '';
+    if (step.startMs && step.endMs) {
+      durationStr = formatDurationMs(step.endMs - step.startMs);
+    } else if (step.startMs && status === 'RUNNING') {
+      durationStr = formatDurationMs(nowMs - step.startMs);
     }
 
     return {
       ...step,
       status,
-      durationStr: def.defaultDuration
+      durationStr
     };
   });
 }
@@ -139,7 +173,16 @@ export default function BuildLiveLogs() {
   const [build, setBuild] = useState(null);
   const [expandedSteps, setExpandedSteps] = useState({});
   const [fullscreenStep, setFullscreenStep] = useState(null);
+  const [nowMs, setNowMs] = useState(Date.now());
   const terminalRefs = useRef({});
+
+  // Timer for live duration update while build is running
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let interval;
@@ -164,10 +207,10 @@ export default function BuildLiveLogs() {
   }, [id]);
 
   const steps = useMemo(() => {
-    return parseLogsToSteps(build?.logs || '', build?.status);
-  }, [build?.logs, build?.status]);
+    return parseLogsToSteps(build?.logs || '', build?.status, nowMs);
+  }, [build?.logs, build?.status, nowMs]);
 
-  // Auto-expand FAILED step on load if present
+  // Auto-expand FAILED step or currently RUNNING step
   useEffect(() => {
     if (steps.length > 0) {
       setExpandedSteps(prev => {
@@ -309,9 +352,11 @@ export default function BuildLiveLogs() {
 
                 {/* Duration & Download Icon */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                  <span style={{ fontSize: '0.85rem', color: isExpanded || isFailed ? '#ffffff' : '#8e919a', fontWeight: 400 }}>
-                    {step.durationStr}
-                  </span>
+                  {step.durationStr && (
+                    <span style={{ fontSize: '0.85rem', color: isExpanded || isFailed ? '#ffffff' : '#8e919a', fontWeight: 400 }}>
+                      {step.durationStr}
+                    </span>
+                  )}
 
                   <button
                     onClick={(e) => downloadStepLogs(step.name, step.lines, e)}
