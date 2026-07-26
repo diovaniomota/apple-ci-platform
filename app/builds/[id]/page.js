@@ -589,29 +589,6 @@ export default function BuildLiveLogs() {
           overflowY: 'auto'
         }}
       >
-        {/* Codemagic Top Action Required Banner (matches Codemagic design) */}
-        <div
-          style={{
-            background: 'rgba(220, 38, 38, 0.08)',
-            border: '1px solid #dc2626',
-            borderRadius: '8px',
-            padding: '16px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '28px'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <AlertTriangle size={20} style={{ color: '#dc2626', flexShrink: 0 }} />
-            <span style={{ fontSize: '0.875rem', color: '#ffffff', fontWeight: 500 }}>
-              <strong style={{ color: '#ffffff' }}>[ACTION REQUIRED]</strong> There are outstanding invoices. Please update your billing details to continue building.
-            </span>
-          </div>
-          <Link href="/settings" style={{ color: '#0066ff', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>
-            Update billing
-          </Link>
-        </div>
 
         {/* Codemagic Subtitle */}
         <p style={{ color: '#94969c', fontSize: '0.875rem', fontWeight: 400, marginBottom: '20px' }}>
