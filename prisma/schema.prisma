@@ -26,6 +26,7 @@ model Build {
   status      String   @default("PENDING") // PENDING, RUNNING, SUCCESS, FAILED, CANCELLED
   logs        String   @default("")
   commit      String?  @default("")
+  machine     String?  @default("Mac mini (Intel Core i5)")
   artifacts   String?  @default("[]")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

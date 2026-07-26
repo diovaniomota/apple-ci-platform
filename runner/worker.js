@@ -25,6 +25,27 @@ if (!fs.existsSync(PUBLIC_ARTIFACTS_DIR)) {
 console.log('🍎 Apple CI Runner Started...');
 console.log(`Workspace: ${WORKSPACE_DIR}`);
 
+function getMachineSpecs() {
+  try {
+    const sysInfo = execSync('system_profiler SPHardwareDataType 2>/dev/null').toString();
+    const chipMatch = sysInfo.match(/Chip:\s*(.+)/);
+    const modelMatch = sysInfo.match(/Model Name:\s*(.+)/);
+    const procMatch = sysInfo.match(/Processor Name:\s*(.+)/);
+
+    const modelName = modelMatch ? modelMatch[1].trim() : 'Mac mini';
+    const chipOrProc = chipMatch ? chipMatch[1].trim() : procMatch ? procMatch[1].trim() : '';
+
+    if (chipOrProc.includes('M1')) return `${modelName} M1`;
+    if (chipOrProc.includes('M2')) return `${modelName} M2`;
+    if (chipOrProc.includes('M3')) return `${modelName} M3`;
+    if (chipOrProc.includes('M4')) return `${modelName} M4`;
+    if (chipOrProc) return `${modelName} (${chipOrProc})`;
+    return `${modelName} (Dual-Core Intel Core i5)`;
+  } catch (e) {
+    return 'Mac mini (Dual-Core Intel Core i5)';
+  }
+}
+
 async function appendLog(buildId, text) {
   try {
     const build = await prisma.build.findUnique({ where: { id: buildId } });
@@ -133,10 +154,16 @@ async function processBuilds() {
 
     if (!build) return;
 
-    console.log(`\n▶ Processing build: ${build.id}`);
+    const detectedMachine = getMachineSpecs();
+    console.log(`\n▶ Processing build: ${build.id} on ${detectedMachine}`);
+
     await prisma.build.update({
       where: { id: build.id },
-      data: { status: 'RUNNING', logs: '' }
+      data: {
+        status: 'RUNNING',
+        logs: '',
+        machine: detectedMachine
+      }
     });
 
     const projectDir = path.join(WORKSPACE_DIR, `${build.id}-${Date.now()}`);
@@ -146,7 +173,7 @@ async function processBuilds() {
 
       // STEP 1: Preparing build machine
       await startStep(build.id, 'Preparing build machine');
-      await appendLog(build.id, `🚀 Build started by Apple CI Platform\nUser-defined environment variables loaded\n`);
+      await appendLog(build.id, `🚀 Build started by Apple CI Platform\nHost Machine: ${detectedMachine}\nUser-defined environment variables loaded\n`);
       const settings = await loadSettings();
 
       const fastlaneEnv = {

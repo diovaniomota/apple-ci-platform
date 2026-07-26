@@ -1,29 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { execSync } from 'child_process';
 
 const prisma = new PrismaClient();
-
-function getMachineName() {
-  try {
-    const sysInfo = execSync('system_profiler SPHardwareDataType 2>/dev/null').toString();
-    const chipMatch = sysInfo.match(/Chip:\s*(.+)/);
-    const modelMatch = sysInfo.match(/Model Name:\s*(.+)/);
-    const procMatch = sysInfo.match(/Processor Name:\s*(.+)/);
-
-    const modelName = modelMatch ? modelMatch[1].trim() : 'Mac mini';
-    const chipOrProc = chipMatch ? chipMatch[1].trim() : procMatch ? procMatch[1].trim() : '';
-
-    if (chipOrProc.includes('M1')) return `${modelName} M1`;
-    if (chipOrProc.includes('M2')) return `${modelName} M2`;
-    if (chipOrProc.includes('M3')) return `${modelName} M3`;
-    if (chipOrProc.includes('M4')) return `${modelName} M4`;
-    if (chipOrProc) return `${modelName} (${chipOrProc})`;
-    return modelName;
-  } catch (e) {
-    return 'Mac mini';
-  }
-}
 
 export async function GET(request, { params }) {
   try {
@@ -47,7 +25,7 @@ export async function GET(request, { params }) {
     const machineSetting = await prisma.setting.findUnique({ where: { key: 'WORKER_MACHINE_NAME' } });
 
     const startedBy = appleIdSetting?.value || 'diovaniomotaa@gmail.com';
-    const machine = machineSetting?.value || getMachineName();
+    const machine = machineSetting?.value || build.machine || 'Mac mini (Dual-Core Intel Core i5)';
 
     return NextResponse.json({
       ...build,
