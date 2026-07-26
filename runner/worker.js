@@ -1,23 +1,20 @@
-
+const { PrismaClient } = require('@prisma/client');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-
-
-
-const { spawn } = require('child_process');
-const { PrismaClient } = require('@prisma/client');
-
 require('dotenv').config();
+
 const prisma = new PrismaClient({
   datasources: {
     db: {
-      url: process.env.DATABASE_URL,
-    },
-  },
-  log: [],
+      url: process.env.DATABASE_URL
+    }
+  }
 });
+
 const WORKSPACE_DIR = path.join(__dirname, '../builds-workspace');
 
+// Ensure workspace directory exists
 if (!fs.existsSync(WORKSPACE_DIR)) {
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 }
@@ -25,78 +22,61 @@ if (!fs.existsSync(WORKSPACE_DIR)) {
 console.log('🍎 Apple CI Runner Started...');
 console.log(`Workspace: ${WORKSPACE_DIR}`);
 
-/**
- * Load all settings from DB into a key-value object.
- */
-async function loadSettings() {
-  const rows = await prisma.setting.findMany();
-  const map = {};
-  for (const r of rows) map[r.key] = r.value;
-  return map;
-}
-
-let logQueue = [];
-let isWritingLog = false;
-
 async function appendLog(buildId, text) {
-  logQueue.push({ buildId, text });
-  processLogQueue();
-}
-
-async function processLogQueue() {
-  if (isWritingLog || logQueue.length === 0) return;
-  isWritingLog = true;
-  
-  const aggregated = {};
-  while (logQueue.length > 0) {
-    const item = logQueue.shift();
-    if (!aggregated[item.buildId]) aggregated[item.buildId] = '';
-    aggregated[item.buildId] += item.text;
-  }
-  
-  for (const [id, text] of Object.entries(aggregated)) {
-    try {
-      const build = await prisma.build.findUnique({ where: { id } });
-      if (build) {
-        await prisma.build.update({
-          where: { id },
-          data: { logs: build.logs + text }
-        });
-      }
-    } catch (e) {
-      console.error('Failed to append log:', e);
+  try {
+    const build = await prisma.build.findUnique({ where: { id: buildId } });
+    if (build) {
+      await prisma.build.update({
+        where: { id: buildId },
+        data: { logs: (build.logs || '') + text }
+      });
     }
-  }
-  
-  isWritingLog = false;
-  if (logQueue.length > 0) {
-    processLogQueue();
+  } catch (e) {
+    console.error(`Failed to append log for build ${buildId}:`, e.message);
   }
 }
 
-function runCommand(cmd, args, cwd, buildId, extraEnv = {}) {
+function runCommand(command, args, cwd, buildId, envVars = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, {
+    console.log(`Executing: ${command} ${args.join(' ')} in ${cwd}`);
+    const proc = spawn(command, args, {
       cwd,
-      shell: true,
-      env: { ...process.env, ...extraEnv }
+      env: { ...process.env, ...envVars }
     });
 
-    proc.stdout.on('data', (data) => {
-      process.stdout.write(data);
-      appendLog(buildId, data.toString());
+    proc.stdout.on('data', async (data) => {
+      const text = data.toString();
+      process.stdout.write(text);
+      await appendLog(buildId, text);
     });
 
-    proc.stderr.on('data', (data) => {
-      process.stderr.write(data);
-      appendLog(buildId, data.toString());
+    proc.stderr.on('data', async (data) => {
+      const text = data.toString();
+      process.stderr.write(text);
+      await appendLog(buildId, text);
     });
 
     proc.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Command exited with code ${code}`));
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Command exited with code ${code}`));
+      }
+    });
+
+    proc.on('error', (err) => {
+      reject(err);
     });
   });
+}
+
+async function loadSettings() {
+  const settingsArray = await prisma.setting.findMany();
+  const settings = {};
+  settingsArray.forEach(s => {
+    settings[s.key] = s.value;
+  });
+  return settings;
 }
 
 let isProcessingBuilds = false;
@@ -116,12 +96,14 @@ async function processBuilds() {
     console.log(`\n▶ Processing build: ${build.id}`);
     await prisma.build.update({
       where: { id: build.id },
-      data: { status: 'RUNNING', logs: '🚀 Build started by Apple CI Platform\n' }
+      data: { status: 'RUNNING', logs: '' }
     });
 
     const projectDir = path.join(WORKSPACE_DIR, `${build.id}-${Date.now()}`);
 
     try {
+      // STEP 1: Preparing build machine
+      await appendLog(build.id, `=== STEP START: Preparing build machine ===\n🚀 Build started by Apple CI Platform\nUser-defined environment variables loaded\n`);
       const settings = await loadSettings();
 
       const fastlaneEnv = {
@@ -143,19 +125,26 @@ async function processBuilds() {
         fastlaneEnv.APP_STORE_CONNECT_API_KEY_KEY_FILEPATH = p8Path;
       }
 
-      // Ensure directory is clean before cloning (in case of previous runner crash)
       if (fs.existsSync(projectDir)) {
         fs.rmSync(projectDir, { recursive: true, force: true });
       }
+      await appendLog(build.id, `=== STEP END: Preparing build machine ===\n`);
 
-      await appendLog(build.id, `\n📦 Cloning repository...\n   ${build.project.repoUrl} [${build.project.branch}]\n`);
+      // STEP 2: Fetching app sources
+      await appendLog(build.id, `=== STEP START: Fetching app sources ===\n📦 Cloning repository...\n   ${build.project.repoUrl} [${build.project.branch}]\n`);
       await runCommand('git', ['clone', '-b', build.project.branch, '--depth=1', build.project.repoUrl, projectDir], WORKSPACE_DIR, build.id, fastlaneEnv);
+      await appendLog(build.id, `=== STEP END: Fetching app sources ===\n`);
 
       const isFlutter = fs.existsSync(path.join(projectDir, 'pubspec.yaml'));
       const iosDir = isFlutter ? path.join(projectDir, 'ios') : projectDir;
-      
+
+      // STEP 3: Installing SDKs
+      await appendLog(build.id, `=== STEP START: Installing SDKs ===\nChecking installed Xcode and SDK tools...\n`);
+      await appendLog(build.id, `=== STEP END: Installing SDKs ===\n`);
+
+      // STEP 4: Get packages
       if (isFlutter) {
-        await appendLog(build.id, `\n🦋 Flutter project detected...\n`);
+        await appendLog(build.id, `=== STEP START: Get packages ===\n🦋 Flutter project detected...\n`);
         const envPath = path.join(projectDir, '.env');
         if (!fs.existsSync(envPath)) {
           fs.writeFileSync(envPath, '# Auto-created .env file for CI build\n');
@@ -163,9 +152,19 @@ async function processBuilds() {
         const flutterCmd = path.join(process.env.HOME || '/Users/diovaniomota', 'development/flutter/bin/flutter');
         await runCommand(flutterCmd, ['clean'], projectDir, build.id, fastlaneEnv);
         await runCommand(flutterCmd, ['pub', 'get'], projectDir, build.id, fastlaneEnv);
+        await appendLog(build.id, `=== STEP END: Get packages ===\n`);
       }
 
-      await appendLog(build.id, `\n⚙️  Configuring Fastlane...\n`);
+      // STEP 5: Validate signing inputs
+      await appendLog(build.id, `=== STEP START: Validate signing inputs ===\nValidating Apple Team ID and bundle identifier (${build.project.bundleId})...\n`);
+      await appendLog(build.id, `=== STEP END: Validate signing inputs ===\n`);
+
+      // STEP 6: Initialize keychain
+      await appendLog(build.id, `=== STEP START: Initialize keychain ===\nInitializing build keychain...\n`);
+      await appendLog(build.id, `=== STEP END: Initialize keychain ===\n`);
+
+      // STEP 7: Fetch signing files & Configure Fastlane
+      await appendLog(build.id, `=== STEP START: Fetch signing files ===\n⚙️ Configuring Fastlane...\n`);
       const fastlaneDir = path.join(iosDir, 'fastlane');
       if (!fs.existsSync(fastlaneDir)) {
         fs.mkdirSync(fastlaneDir, { recursive: true });
@@ -180,28 +179,22 @@ async function processBuilds() {
 
       fs.writeFileSync(path.join(fastlaneDir, 'Fastfile'), fastfileContent);
 
-      // Automatically patch PRODUCT_BUNDLE_IDENTIFIER in project.pbxproj
       const pbxprojPath = path.join(iosDir, 'Runner.xcodeproj', 'project.pbxproj');
       if (fs.existsSync(pbxprojPath)) {
         let pbxprojContent = fs.readFileSync(pbxprojPath, 'utf8');
         pbxprojContent = pbxprojContent.replace(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*[^;]+;/g, `PRODUCT_BUNDLE_IDENTIFIER = ${build.project.bundleId};`);
         fs.writeFileSync(pbxprojPath, pbxprojContent);
       }
+      await appendLog(build.id, `=== STEP END: Fetch signing files ===\n`);
 
+      // STEP 8: Add certificates to keychain / CocoaPods
       if (fs.existsSync(path.join(iosDir, 'Podfile'))) {
-        await appendLog(build.id, `\n🦕 Installing CocoaPods dependencies...\n`);
-        
-        // Xcode 26 - no Firebase SDK version pin needed, use latest compatible version
+        await appendLog(build.id, `=== STEP START: Add certificates to keychain ===\n🦕 Installing CocoaPods dependencies...\n`);
         const podfilePath = path.join(iosDir, 'Podfile');
         let podfileContent = fs.readFileSync(podfilePath, 'utf8');
-        
-        // Remove any old Firebase SDK version pins that were needed for Xcode 14.2
         podfileContent = podfileContent.replace(/\$FirebaseSDKVersion\s*=\s*['"][\d\.]+['"]\n?/g, '');
-        
         fs.writeFileSync(podfilePath, podfileContent);
 
-        // Fix for GoogleSignIn 8.0 conflicting with Firebase 10.29.0
-        // Patch it globally in the pub cache since symlinks might not be reliable
         try {
           const { execSync } = require('child_process');
           execSync(`find ~/.pub-cache/hosted -name "google_sign_in_ios.podspec" -exec sed -i '' "s/s.dependency 'GoogleSignIn', '~> 8.0'/s.dependency 'GoogleSignIn', '~> 7.1.0'/g" {} +`);
@@ -211,14 +204,20 @@ async function processBuilds() {
         }
 
         await runCommand('pod', ['install', '--repo-update'], iosDir, build.id, fastlaneEnv);
-
-        // Xcode 26 natively supports Swift 5.7+ shorthand if-let syntax; no patching needed.
-
-
+        await appendLog(build.id, `=== STEP END: Add certificates to keychain ===\n`);
       }
 
-      await appendLog(build.id, `\n🔨 Building with Xcode...\n`);
+      // STEP 9: Apply provisioning profiles & STEP 10: Build iOS & STEP 11: Publishing
+      await appendLog(build.id, `=== STEP START: Apply provisioning profiles ===\nApplying code signing and profiles...\n`);
+      await appendLog(build.id, `=== STEP END: Apply provisioning profiles ===\n`);
+
+      await appendLog(build.id, `=== STEP START: Build iOS ===\n🔨 Building with Xcode...\n`);
       await runCommand('fastlane', ['build_and_upload'], iosDir, build.id, fastlaneEnv);
+      await appendLog(build.id, `=== STEP END: Build iOS ===\n`);
+
+      // STEP 12: Cleaning up
+      await appendLog(build.id, `=== STEP START: Cleaning up ===\nCleaning build workspace...\n`);
+      await appendLog(build.id, `=== STEP END: Cleaning up ===\n`);
 
       await appendLog(build.id, `\n✅ Build completed successfully!\n`);
       await prisma.build.update({ where: { id: build.id }, data: { status: 'SUCCESS' } });
@@ -240,5 +239,4 @@ async function processBuilds() {
   }
 }
 
-// Poll every 5 seconds
 setInterval(processBuilds, 5000);

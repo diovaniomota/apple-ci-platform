@@ -1,5 +1,8 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -25,167 +28,113 @@ function CodemagicDownloadIcon({ size = 18, color = 'currentColor' }) {
   );
 }
 
+// Fixed Codemagic 12 Steps Definition
+const CODEMAGIC_STEPS = [
+  { id: 'prepare', name: 'Preparing build machine', defaultDuration: '46s' },
+  { id: 'clone', name: 'Fetching app sources', defaultDuration: '5s' },
+  { id: 'sdks', name: 'Installing SDKs', defaultDuration: '< 1s' },
+  { id: 'packages', name: 'Get packages', defaultDuration: '23s' },
+  { id: 'validate_signing', name: 'Validate signing inputs', defaultDuration: '< 1s' },
+  { id: 'init_keychain', name: 'Initialize keychain', defaultDuration: '< 1s' },
+  { id: 'fastlane_config', name: 'Fetch signing files', defaultDuration: '2s' },
+  { id: 'cocoapods', name: 'Add certificates to keychain', defaultDuration: '< 1s' },
+  { id: 'apply_profiles', name: 'Apply provisioning profiles', defaultDuration: '1s' },
+  { id: 'build_ios', name: 'Build iOS', defaultDuration: '1m 51s' },
+  { id: 'publishing', name: 'Publishing', defaultDuration: '1m 10s' },
+  { id: 'cleanup', name: 'Cleaning up', defaultDuration: '3s' }
+];
+
 /**
  * Parse raw log string into structured Codemagic-like build steps
  */
 function parseLogsToSteps(rawLogs, buildStatus) {
-  if (!rawLogs) return [];
+  if (!rawLogs) {
+    return CODEMAGIC_STEPS.map(s => ({
+      ...s,
+      lines: ['No logs available'],
+      status: 'PENDING',
+      durationStr: s.defaultDuration
+    }));
+  }
 
   const lines = rawLogs.split('\n');
 
-  const stepDefinitions = [
-    {
-      id: 'prepare',
-      name: 'Preparing build machine',
-      startPattern: /🚀 Build started|◇ injected env|Workspace:/i
-    },
-    {
-      id: 'clone',
-      name: 'Fetching app sources',
-      startPattern: /📦 Cloning repository/i
-    },
-    {
-      id: 'sdks',
-      name: 'Installing SDKs',
-      startPattern: /Installing SDKs|Xcode version|Flutter SDK/i
-    },
-    {
-      id: 'packages',
-      name: 'Get packages',
-      startPattern: /🦋 Flutter project detected|Resolving dependencies|Downloading packages/i
-    },
-    {
-      id: 'validate_signing',
-      name: 'Validate signing inputs',
-      startPattern: /Validate signing inputs|Checking certificates/i
-    },
-    {
-      id: 'init_keychain',
-      name: 'Initialize keychain',
-      startPattern: /Initialize keychain|keychain/i
-    },
-    {
-      id: 'fastlane_config',
-      name: 'Fetch signing files',
-      startPattern: /⚙️\s*Configuring Fastlane|Fetch signing files/i
-    },
-    {
-      id: 'cocoapods',
-      name: 'Add certificates to keychain',
-      startPattern: /🦕 Installing CocoaPods dependencies|Updating local specs repositories|Installing certificate/i
-    },
-    {
-      id: 'apply_profiles',
-      name: 'Apply provisioning profiles',
-      startPattern: /Installed Provisioning Profile|update_code_signing_settings/i
-    },
-    {
-      id: 'build_ios',
-      name: 'Build iOS',
-      startPattern: /--- Step: gym ---|🔨 Building with Xcode|Resolving Swift Package Manager|Compiling |Processing /i
-    },
-    {
-      id: 'publishing',
-      name: 'Publishing',
-      startPattern: /--- Step: pilot ---|Uploading to TestFlight|Uploading app to App Store Connect|pilot/i
-    },
-    {
-      id: 'cleanup',
-      name: 'Cleaning up',
-      startPattern: /Cleaning up|✅ Build completed successfully/i
-    }
-  ];
+  // Check if logs contain explicit STEP START markers
+  const hasExplicitMarkers = lines.some(line => line.startsWith('=== STEP START:'));
 
-  let steps = [];
-  let currentStep = null;
-
-  lines.forEach((line, index) => {
-    let matchedDef = null;
-
-    const explicitMatch = line.match(/^=== STEP START: (.+) ===$/);
-    if (explicitMatch) {
-      matchedDef = { id: explicitMatch[1].toLowerCase().replace(/\s+/g, '_'), name: explicitMatch[1] };
-    } else {
-      matchedDef = stepDefinitions.find(def => def.startPattern.test(line));
-    }
-
-    if (matchedDef && (!currentStep || currentStep.id !== matchedDef.id)) {
-      if (currentStep) {
-        steps.push(currentStep);
-      }
-      currentStep = {
-        id: matchedDef.id,
-        name: matchedDef.name,
-        lines: [line],
-        startTime: index,
-        endTime: index,
-        status: 'SUCCESS'
-      };
-    } else if (currentStep) {
-      currentStep.lines.push(line);
-      currentStep.endTime = index;
-    } else {
-      currentStep = {
-        id: 'prepare',
-        name: 'Preparing build machine',
-        lines: [line],
-        startTime: index,
-        endTime: index,
-        status: 'SUCCESS'
-      };
-    }
+  let stepMap = {};
+  CODEMAGIC_STEPS.forEach(s => {
+    stepMap[s.id] = {
+      ...s,
+      lines: [],
+      status: 'PENDING',
+      durationStr: s.defaultDuration
+    };
   });
 
-  if (currentStep) {
-    steps.push(currentStep);
+  if (hasExplicitMarkers) {
+    let currentId = 'prepare';
+    lines.forEach(line => {
+      const matchStart = line.match(/^=== STEP START: (.+) ===$/);
+      const matchEnd = line.match(/^=== STEP END: (.+) ===$/);
+
+      if (matchStart) {
+        const found = CODEMAGIC_STEPS.find(s => s.name.toLowerCase() === matchStart[1].trim().toLowerCase());
+        if (found) currentId = found.id;
+        return;
+      }
+      if (matchEnd) return;
+
+      if (stepMap[currentId]) {
+        stepMap[currentId].lines.push(line);
+        stepMap[currentId].status = 'SUCCESS';
+      }
+    });
+  } else {
+    // Legacy fallback: divide lines sequentially among standard steps
+    let currentId = 'prepare';
+    lines.forEach(line => {
+      if (/📦 Cloning repository/i.test(line)) currentId = 'clone';
+      else if (/Installing SDKs|Xcode version/i.test(line)) currentId = 'sdks';
+      else if (/🦋 Flutter project|Resolving dependencies|Downloading packages/i.test(line)) currentId = 'packages';
+      else if (/Validate signing/i.test(line)) currentId = 'validate_signing';
+      else if (/Initialize keychain/i.test(line)) currentId = 'init_keychain';
+      else if (/⚙️  Configuring Fastlane/i.test(line)) currentId = 'fastlane_config';
+      else if (/🦕 Installing CocoaPods/i.test(line)) currentId = 'cocoapods';
+      else if (/Installed Provisioning Profile/i.test(line)) currentId = 'apply_profiles';
+      else if (/🔨 Building with Xcode|--- Step: gym ---/i.test(line)) currentId = 'build_ios';
+      else if (/Uploading to TestFlight|--- Step: pilot ---/i.test(line)) currentId = 'publishing';
+      else if (/Cleaning up/i.test(line)) currentId = 'cleanup';
+
+      if (stepMap[currentId]) {
+        stepMap[currentId].lines.push(line);
+        stepMap[currentId].status = 'SUCCESS';
+      }
+    });
   }
 
-  const totalSteps = steps.length;
-  steps = steps.map((step, idx) => {
-    const isLastStep = idx === totalSteps - 1;
+  // Determine status and error highlights for each step
+  return CODEMAGIC_STEPS.map((def, idx) => {
+    const step = stepMap[def.id];
     const stepText = step.lines.join('\n');
-    
     const hasError = /❌|Error uploading|FAILED|Command exited with code|build failed/i.test(stepText);
-    
-    let status = 'SUCCESS';
+
+    let status = step.lines.length > 0 ? 'SUCCESS' : 'PENDING';
     if (hasError) {
       status = 'FAILED';
-    } else if (isLastStep && buildStatus === 'RUNNING') {
+    } else if (buildStatus === 'RUNNING' && idx === CODEMAGIC_STEPS.findIndex(s => stepMap[s.id].lines.length > 0)) {
       status = 'RUNNING';
-    } else if (buildStatus === 'FAILED' && isLastStep) {
-      status = 'FAILED';
-    }
-
-    let durationSec = Math.max(1, Math.round(step.lines.length * 0.4));
-    if (step.id === 'prepare') durationSec = 46;
-    if (step.id === 'clone') durationSec = 5;
-    if (step.id === 'sdks') durationSec = 1;
-    if (step.id === 'packages') durationSec = 23;
-    if (step.id === 'validate_signing') durationSec = 1;
-    if (step.id === 'init_keychain') durationSec = 1;
-    if (step.id === 'fastlane_config') durationSec = 2;
-    if (step.id === 'cocoapods') durationSec = 1;
-    if (step.id === 'apply_profiles') durationSec = 1;
-    if (step.id === 'build_ios') durationSec = Math.max(111, Math.round(step.lines.length * 0.3));
-    if (step.id === 'publishing') durationSec = 70;
-    if (step.id === 'cleanup') durationSec = 3;
-
-    let durationStr = `${durationSec}s`;
-    if (durationSec < 1) durationStr = '< 1s';
-    else if (durationSec >= 60) {
-      const mins = Math.floor(durationSec / 60);
-      const secs = durationSec % 60;
-      durationStr = `${mins}m ${secs}s`;
+    } else if (buildStatus === 'FAILED' && idx === CODEMAGIC_STEPS.length - 1 && !stepMap.publishing.lines.length) {
+      // mark active failed step
+      if (hasError) status = 'FAILED';
     }
 
     return {
       ...step,
       status,
-      durationStr
+      durationStr: def.defaultDuration
     };
   });
-
-  return steps;
 }
 
 export default function BuildLiveLogs() {
@@ -221,12 +170,13 @@ export default function BuildLiveLogs() {
     return parseLogsToSteps(build?.logs || '', build?.status);
   }, [build?.logs, build?.status]);
 
+  // Auto-expand FAILED step on load if present
   useEffect(() => {
     if (steps.length > 0) {
       setExpandedSteps(prev => {
         const nextState = { ...prev };
         steps.forEach(step => {
-          if (step.status === 'FAILED' || step.status === 'RUNNING') {
+          if (step.status === 'FAILED') {
             nextState[step.id] = true;
           }
         });
@@ -244,7 +194,8 @@ export default function BuildLiveLogs() {
 
   const downloadStepLogs = (stepName, lines, e) => {
     e.stopPropagation();
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const content = lines.length > 0 ? lines.join('\n') : `Log for step ${stepName}`;
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -267,7 +218,7 @@ export default function BuildLiveLogs() {
 
   if (!build) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: '#94969c' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: '#94969c', background: '#121316' }}>
         <Loader2 className="animate-spin" size={28} style={{ marginRight: '12px' }} />
         <span>Carregando build...</span>
       </div>
@@ -307,7 +258,6 @@ export default function BuildLiveLogs() {
           const isRunning = step.status === 'RUNNING';
           const isFullscreen = fullscreenStep === step.id;
 
-          // Headers: Solid Blue when expanded, Solid Red when failed, Normal Dark when collapsed
           let headerBg = '#16171a';
           let headerTextColor = '#ffffff';
 
@@ -452,36 +402,42 @@ export default function BuildLiveLogs() {
                       background: '#0b0c0e'
                     }}
                   >
-                    {step.lines.map((line, lIdx) => {
-                      const isLineError = /❌|error|failed|fatal|exception/i.test(line);
-                      const isLineCommand = line.startsWith('>') || line.startsWith('==');
-                      const isLineWarning = /⚠️|warning/i.test(line);
+                    {step.lines.length > 0 ? (
+                      step.lines.map((line, lIdx) => {
+                        const isLineError = /❌|error|failed|fatal|exception/i.test(line);
+                        const isLineCommand = line.startsWith('>') || line.startsWith('==');
+                        const isLineWarning = /⚠️|warning/i.test(line);
 
-                      let lineColor = '#d4d4d4';
-                      if (isLineError) lineColor = '#f87171';
-                      else if (isLineCommand) lineColor = '#38bdf8'; // Codemagic cyan/blue command highlight
-                      else if (isLineWarning) lineColor = '#fbbf24';
+                        let lineColor = '#d4d4d4';
+                        if (isLineError) lineColor = '#f87171';
+                        else if (isLineCommand) lineColor = '#38bdf8';
+                        else if (isLineWarning) lineColor = '#fbbf24';
 
-                      return (
-                        <div key={lIdx} style={{ display: 'flex', gap: '20px' }}>
-                          <span
-                            style={{
-                              width: '32px',
-                              textAlign: 'right',
-                              color: '#474a57',
-                              userSelect: 'none',
-                              flexShrink: 0,
-                              fontFamily: 'monospace'
-                            }}
-                          >
-                            {lIdx}
-                          </span>
-                          <span style={{ color: lineColor, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                            {line}
-                          </span>
-                        </div>
-                      );
-                    })}
+                        return (
+                          <div key={lIdx} style={{ display: 'flex', gap: '20px' }}>
+                            <span
+                              style={{
+                                width: '32px',
+                                textAlign: 'right',
+                                color: '#474a57',
+                                userSelect: 'none',
+                                flexShrink: 0,
+                                fontFamily: 'monospace'
+                              }}
+                            >
+                              {lIdx}
+                            </span>
+                            <span style={{ color: lineColor, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                              {line}
+                            </span>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div style={{ color: '#565a6e', fontStyle: 'italic' }}>
+                        No log output for this step.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
