@@ -465,7 +465,7 @@ export default function BuildLiveLogs() {
           <div style={{ display: 'flex' }}>
             <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Index:</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>
-              80
+              {build.buildIndex || 1}
             </span>
           </div>
 
@@ -479,14 +479,14 @@ export default function BuildLiveLogs() {
           <div style={{ display: 'flex' }}>
             <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Workflow:</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>
-              {build.project?.buildScheme || 'iOS Workflow'}
+              {build.project?.buildScheme ? `${build.project.buildScheme} Workflow` : 'iOS Workflow'}
             </span>
           </div>
 
           <div style={{ display: 'flex' }}>
             <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Started by:</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>
-              diovaniomotaa@gmail.com
+              {build.startedBy || 'diovaniomotaa@gmail.com'}
             </span>
           </div>
 

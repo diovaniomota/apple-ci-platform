@@ -9,9 +9,29 @@ export async function GET(request, { params }) {
       where: { id: params.id },
       include: { project: true }
     });
-    
+
     if (!build) return NextResponse.json({ error: 'Build not found' }, { status: 404 });
-    return NextResponse.json(build);
+
+    // Calculate real sequential build index for this project
+    const buildIndex = await prisma.build.count({
+      where: {
+        projectId: build.projectId,
+        createdAt: { lte: build.createdAt }
+      }
+    });
+
+    // Fetch user email from Settings
+    const appleIdSetting = await prisma.setting.findUnique({
+      where: { key: 'APPLE_ID' }
+    });
+
+    const startedBy = appleIdSetting?.value || 'diovaniomotaa@gmail.com';
+
+    return NextResponse.json({
+      ...build,
+      buildIndex,
+      startedBy
+    });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch build' }, { status: 500 });
   }
