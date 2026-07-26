@@ -84,13 +84,10 @@ function parseLogsToSteps(rawLogs, buildStatus) {
 
   let steps = [];
   let currentStep = null;
-  let lineTimestamps = [];
 
   lines.forEach((line, index) => {
-    // Check if line matches a step start
     let matchedDef = null;
 
-    // Check explicit marker first
     const explicitMatch = line.match(/^=== STEP START: (.+) ===$/);
     if (explicitMatch) {
       matchedDef = { id: explicitMatch[1].toLowerCase().replace(/\s+/g, '_'), name: explicitMatch[1] };
@@ -114,7 +111,6 @@ function parseLogsToSteps(rawLogs, buildStatus) {
       currentStep.lines.push(line);
       currentStep.endTime = index;
     } else {
-      // Create initial prepare step if none matched yet
       currentStep = {
         id: 'prepare',
         name: 'Preparing build machine',
@@ -130,13 +126,11 @@ function parseLogsToSteps(rawLogs, buildStatus) {
     steps.push(currentStep);
   }
 
-  // Determine step statuses and mock realistic durations
   const totalSteps = steps.length;
   steps = steps.map((step, idx) => {
     const isLastStep = idx === totalSteps - 1;
     const stepText = step.lines.join('\n');
     
-    // Check for errors in step lines
     const hasError = /❌|Error uploading|FAILED|Command exited with code|Unicode Normalization not appropriate|build failed/i.test(stepText);
     
     let status = 'SUCCESS';
@@ -148,7 +142,6 @@ function parseLogsToSteps(rawLogs, buildStatus) {
       status = 'FAILED';
     }
 
-    // Estimate duration based on line count and content for a realistic Codemagic feel
     let durationSec = Math.max(1, Math.round(step.lines.length * 0.4));
     if (step.id === 'prepare') durationSec = 46;
     if (step.id === 'clone') durationSec = 5;
@@ -185,30 +178,31 @@ export default function BuildLiveLogs() {
   const terminalRefs = useRef({});
 
   useEffect(() => {
+    let interval;
     const fetchBuild = () => {
       fetch(`/api/builds/${id}`)
         .then(res => res.json())
         .then(data => {
           setBuild(data);
           if (data.status === 'SUCCESS' || data.status === 'FAILED') {
-            clearInterval(interval);
+            if (interval) clearInterval(interval);
           }
         })
         .catch(err => console.error("Failed to load build:", err));
     };
 
     fetchBuild();
-    const interval = setInterval(fetchBuild, 2000);
+    interval = setInterval(fetchBuild, 2000);
 
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [id]);
 
-  // Parse build steps
   const steps = useMemo(() => {
     return parseLogsToSteps(build?.logs || '', build?.status);
   }, [build?.logs, build?.status]);
 
-  // Auto-expand failed step or running step on initial load
   useEffect(() => {
     if (steps.length > 0) {
       setExpandedSteps(prev => {
@@ -271,7 +265,6 @@ export default function BuildLiveLogs() {
 
   return (
     <div style={{ padding: '24px 16px', maxWidth: '1200px', margin: '0 auto', color: '#e2e8f0' }}>
-      {/* Top Header Navigation */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Link href={build.projectId ? `/projects/${build.projectId}` : '/'} style={{ color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
@@ -286,12 +279,10 @@ export default function BuildLiveLogs() {
         </div>
       </div>
 
-      {/* Subheader hint like Codemagic */}
       <p style={{ color: '#8a8d93', fontSize: '0.9rem', marginBottom: '24px' }}>
         Click on the build steps for details.
       </p>
 
-      {/* Steps List (Codemagic Accordion Layout) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {steps.map((step) => {
           const isExpanded = !!expandedSteps[step.id];
@@ -299,15 +290,14 @@ export default function BuildLiveLogs() {
           const isRunning = step.status === 'RUNNING';
           const isFullscreen = fullscreenStep === step.id;
 
-          // Header Styles based on Codemagic design
           let headerBg = '#18191c';
           let headerTextColor = '#ffffff';
 
           if (isFailed) {
-            headerBg = '#dc2626'; // Vibrant Red on error!
+            headerBg = '#dc2626';
             headerTextColor = '#ffffff';
           } else if (isExpanded) {
-            headerBg = '#0052ff'; // Vibrant Codemagic Blue when expanded!
+            headerBg = '#0052ff';
             headerTextColor = '#ffffff';
           }
 
@@ -328,10 +318,9 @@ export default function BuildLiveLogs() {
                 zIndex: isFullscreen ? 9999 : 1,
                 height: isFullscreen ? '100vh' : 'auto',
                 display: isFullscreen ? 'flex' : 'block',
-                flexDirection: isFullscreen ? 'column' : 'normal'
+                flexDirection: isFullscreen ? 'column' : 'row'
               }}
             >
-              {/* Step Header Bar */}
               <div
                 onClick={() => toggleStep(step.id)}
                 style={{
@@ -339,7 +328,7 @@ export default function BuildLiveLogs() {
                   color: headerTextColor,
                   padding: '14px 20px',
                   display: 'flex',
-                  justify-content: 'space-between',
+                  justifyContent: 'space-between',
                   alignItems: 'center',
                   cursor: 'pointer',
                   userSelect: 'none',
@@ -403,10 +392,8 @@ export default function BuildLiveLogs() {
                 </div>
               </div>
 
-              {/* Step Expanded Content (Terminal Output) */}
               {isExpanded && (
                 <div style={{ position: 'relative', flex: isFullscreen ? 1 : 'none', background: '#0a0b0d' }}>
-                  {/* Floating Terminal Navigation Controls */}
                   <div
                     style={{
                       position: 'absolute',
@@ -446,7 +433,6 @@ export default function BuildLiveLogs() {
                     </button>
                   </div>
 
-                  {/* Terminal Box */}
                   <div
                     ref={(el) => (terminalRefs.current[step.id] = el)}
                     style={{
@@ -465,8 +451,8 @@ export default function BuildLiveLogs() {
                       const isLineWarning = /⚠️|warning/i.test(line);
 
                       let lineColor = '#d1d5db';
-                      if (isLineError) lineColor = '#f87171'; // soft red
-                      else if (isLineWarning) lineColor = '#fbbf24'; // amber
+                      if (isLineError) lineColor = '#f87171';
+                      else if (isLineWarning) lineColor = '#fbbf24';
 
                       return (
                         <div key={lIdx} style={{ display: 'flex', gap: '16px' }}>
