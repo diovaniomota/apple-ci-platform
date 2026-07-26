@@ -329,15 +329,6 @@ export default function BuildLiveLogs() {
     }
   } catch (e) {}
 
-  if (parsedArtifacts.length === 0) {
-    const formattedName = (build.project?.name || 'Runner').replace(/[^a-zA-Z0-9_-]/g, '');
-    parsedArtifacts = [
-      { name: `${formattedName}.ipa`, size: '26.25 MB', url: `/api/artifacts/${build.id}/${formattedName}.ipa`, type: 'ipa' },
-      { name: `Runner.app.zip`, size: '34.12 MB', url: `/api/artifacts/${build.id}/Runner.app.zip`, type: 'zip' },
-      { name: `Runner.app.dSYM.zip`, size: '12.45 MB', url: `/api/artifacts/${build.id}/Runner.app.dSYM.zip`, type: 'dsym' }
-    ];
-  }
-
   // Calculate total build duration
   const createdMs = Date.parse(build.createdAt);
   const updatedMs = Date.parse(build.updatedAt);
@@ -536,50 +527,54 @@ export default function BuildLiveLogs() {
         </div>
 
         {/* ARTIFACTS SECTION */}
-        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827', margin: '36px 0 16px 0' }}>
-          Artifacts
-        </h3>
+        {parsedArtifacts.length > 0 && (
+          <>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827', margin: '36px 0 16px 0' }}>
+              Artifacts
+            </h3>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {parsedArtifacts.map((art, aIdx) => (
-            <div key={aIdx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-              <a
-                href={art.url}
-                download
-                style={{
-                  color: '#0066ff',
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {art.type === 'ipa' ? (
-                  <span style={{ fontSize: '1rem' }}>🍎</span>
-                ) : (
-                  <span style={{ fontSize: '1rem' }}>📦</span>
-                )}
-                <span>
-                  {art.name} <span style={{ color: '#4b5563', fontWeight: 500 }}>[{art.size}]</span>
-                </span>
-              </a>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {parsedArtifacts.map((art, aIdx) => (
+                <div key={aIdx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                  <a
+                    href={art.url}
+                    download
+                    style={{
+                      color: '#0066ff',
+                      fontWeight: 600,
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {art.type === 'ipa' ? (
+                      <span style={{ fontSize: '1rem' }}>🍎</span>
+                    ) : (
+                      <span style={{ fontSize: '1rem' }}>📦</span>
+                    )}
+                    <span>
+                      {art.name} <span style={{ color: '#4b5563', fontWeight: 500 }}>[{art.size}]</span>
+                    </span>
+                  </a>
 
-              {art.type === 'ipa' && (
-                <button
-                  title="QR Code para download no iPhone"
-                  onClick={() => alert(`Scan QR code or open direct link on iPhone: ${window.location.origin}${art.url}`)}
-                  style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
-                >
-                  <QrCode size={16} />
-                </button>
-              )}
+                  {art.type === 'ipa' && (
+                    <button
+                      title="QR Code para download no iPhone"
+                      onClick={() => alert(`Scan QR code or open direct link on iPhone: ${window.location.origin}${art.url}`)}
+                      style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                    >
+                      <QrCode size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
       </div>
 
 

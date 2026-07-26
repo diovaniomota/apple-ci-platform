@@ -367,15 +367,6 @@ async function processBuilds() {
         }
       } catch (e) {}
 
-      // Fallback default artifact entries if workspace clean (so list always shows real files)
-      if (artifactsList.length === 0) {
-        artifactsList.push(
-          { name: `${formattedProjectName}.ipa`, size: '26.25 MB', url: `#`, type: 'ipa' },
-          { name: `Runner.app.zip`, size: '34.12 MB', url: `#`, type: 'zip' },
-          { name: `Runner.app.dSYM.zip`, size: '12.45 MB', url: `#`, type: 'dsym' }
-        );
-      }
-
       await prisma.build.update({
         where: { id: build.id },
         data: {
