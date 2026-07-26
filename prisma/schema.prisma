@@ -23,8 +23,10 @@ model Project {
 model Build {
   id          String   @id @default(uuid())
   projectId   String
-  status      String   @default("PENDING") // PENDING, RUNNING, SUCCESS, FAILED
+  status      String   @default("PENDING") // PENDING, RUNNING, SUCCESS, FAILED, CANCELLED
   logs        String   @default("")
+  commit      String?  @default("")
+  artifacts   String?  @default("[]")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   project     Project  @relation(fields: [projectId], references: [id])
