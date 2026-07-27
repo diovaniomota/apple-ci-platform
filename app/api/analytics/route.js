@@ -73,20 +73,22 @@ export async function GET() {
 
     // Fallback default runner if no DB entry exists yet
     if (runners.length === 0) {
+      const lastBuild = builds[0];
+      const detectedMachine = lastBuild?.machine || 'Mac mini (Intel Core i5)';
       runners = [
         {
           id: 'default-runner',
           runnerId: 'runner-macmini-01',
-          hostname: 'Mac-mini-Daemon',
-          machine: 'Mac mini (Intel Core i5)',
+          hostname: 'Mac mini Worker',
+          machine: detectedMachine,
           status: runningBuilds > 0 ? 'BUILDING' : 'ONLINE',
-          cpuUsage: runningBuilds > 0 ? 68.4 : 14.2,
-          memUsage: 45.8,
-          memTotal: '8 GB',
-          diskUsage: 38.2,
-          diskFree: '124 GB free',
+          cpuUsage: 0,
+          memUsage: 0,
+          memTotal: 'Leitura em tempo real...',
+          diskUsage: 0,
+          diskFree: 'Aguardando runner...',
           activeBuild: runningBuilds > 0 ? builds.find(b => b.status === 'RUNNING')?.id : null,
-          lastSeenAgoSec: 2
+          lastSeenAgoSec: 0
         }
       ];
     }

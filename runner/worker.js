@@ -32,46 +32,69 @@ console.log('🍎 Apple CI Runner Started...');
 console.log(`Workspace: ${WORKSPACE_DIR}`);
 console.log(`Cache Dir: ${CACHE_DIR}`);
 
-// Get system metrics (CPU, RAM, Disk)
+// Get system metrics (CPU, RAM, Disk) directly from Mac mini hardware
 function getSystemMetrics() {
-  let cpuUsage = 18.5;
-  let memUsage = 42.0;
-  let memTotal = '8 GB';
-  let diskUsage = 35.0;
-  let diskFree = '120 GB free';
-  let hostname = 'Mac-mini-Runner';
+  let cpuUsage = 0.0;
+  let memUsage = 0.0;
+  let memTotal = '';
+  let diskUsage = 0.0;
+  let diskFree = '';
+  let hostname = os.hostname() || 'Mac-mini-Runner';
 
   try {
     hostname = os.hostname() || 'Mac-mini-Runner';
-    let totalMemBytes = 0;
+
+    // 1. Extract exact physical RAM from macOS system_profiler or sysctl
+    let realMemStr = '';
     try {
-      totalMemBytes = parseInt(execSync('sysctl -n hw.memsize 2>/dev/null').toString().trim(), 10);
-    } catch (e) {
-      totalMemBytes = os.totalmem();
+      const profilerOutput = execSync('system_profiler SPHardwareDataType 2>/dev/null').toString();
+      const memMatch = profilerOutput.match(/Memory:\s*(.+)/i);
+      if (memMatch && memMatch[1]) {
+        realMemStr = memMatch[1].trim(); // e.g. "4 GB", "8 GB", "16 GB"
+      }
+    } catch (e) {}
+
+    if (!realMemStr) {
+      try {
+        const memBytesStr = execSync('sysctl -n hw.memsize 2>/dev/null').toString().trim();
+        const bytes = parseInt(memBytesStr, 10);
+        if (!isNaN(bytes) && bytes > 0) {
+          const gbs = (bytes / (1024 * 1024 * 1024)).toFixed(0);
+          realMemStr = `${gbs} GB`;
+        }
+      } catch (e) {}
     }
 
-    if (totalMemBytes > 0) {
-      const gbs = Math.round(totalMemBytes / (1024 * 1024 * 1024));
-      memTotal = `${gbs} GB`;
+    if (!realMemStr) {
+      const totalMemBytes = os.totalmem();
+      if (totalMemBytes > 0) {
+        realMemStr = `${Math.round(totalMemBytes / (1024 * 1024 * 1024))} GB`;
+      }
     }
 
+    memTotal = realMemStr || '4 GB';
+
+    // 2. RAM Usage %
+    const totalMemBytes = os.totalmem();
     const freeMemBytes = os.freemem();
     if (totalMemBytes > 0) {
       memUsage = parseFloat((((totalMemBytes - freeMemBytes) / totalMemBytes) * 100).toFixed(1));
     }
 
+    // 3. CPU Usage %
     const cpus = os.cpus();
     if (cpus && cpus.length > 0) {
       const load = os.loadavg();
-      cpuUsage = Math.min(100, parseFloat(((load[0] / cpus.length) * 100).toFixed(1))) || 15.0;
+      cpuUsage = Math.min(100, parseFloat(((load[0] / cpus.length) * 100).toFixed(1))) || 0.0;
     }
 
+    // 4. Disk Free Space
     const dfOutput = execSync('df -h / 2>/dev/null').toString();
     const dfLines = dfOutput.trim().split('\n');
     if (dfLines.length > 1) {
       const parts = dfLines[1].split(/\s+/);
       if (parts.length >= 4) {
-        diskUsage = parseFloat((parts[4] || '35%').replace('%', '')) || 35.0;
+        diskUsage = parseFloat((parts[4] || '0%').replace('%', '')) || 0.0;
         diskFree = `${parts[3]} free`;
       }
     }
