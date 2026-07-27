@@ -138,8 +138,17 @@ async function updateRunnerHeartbeat(status = 'ONLINE', activeBuildId = null) {
         lastSeen: new Date()
       }
     });
-  } catch (e) {}
+    console.log(`💓 Heartbeat updated for ${metrics.hostname} (${metrics.memTotal} RAM)`);
+  } catch (e) {
+    console.error('Heartbeat error:', e.message);
+  }
 }
+
+// Immediately trigger first heartbeat on startup
+updateRunnerHeartbeat('ONLINE', null);
+setInterval(() => {
+  updateRunnerHeartbeat(isProcessingBuilds ? 'BUILDING' : 'ONLINE');
+}, 10000);
 
 // Project Caching Helpers (Pods & Flutter Plugin Symlinks)
 function restoreProjectCache(projectId, iosDir) {
