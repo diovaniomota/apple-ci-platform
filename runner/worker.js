@@ -25,6 +25,43 @@ if (!fs.existsSync(PUBLIC_ARTIFACTS_DIR)) {
 console.log('🍎 Apple CI Runner Started...');
 console.log(`Workspace: ${WORKSPACE_DIR}`);
 
+// Clean stale Flutter lockfiles to prevent hang on "Waiting for another flutter command..."
+function clearFlutterLock() {
+  try {
+    const home = process.env.HOME || '/Users/diovaniomota';
+    const lockPath = path.join(home, 'development/flutter/bin/cache/lockfile');
+    if (fs.existsSync(lockPath)) {
+      fs.unlinkSync(lockPath);
+      console.log('🧹 Cleared stale Flutter lockfile');
+    }
+  } catch (e) {}
+}
+
+// On startup: clean orphaned RUNNING builds from previous runner crashes
+async function cleanupStuckBuildsOnStartup() {
+  try {
+    clearFlutterLock();
+    const stuckBuilds = await prisma.build.findMany({
+      where: { status: 'RUNNING' }
+    });
+
+    for (const b of stuckBuilds) {
+      console.log(`🧹 Cleaning orphaned stuck build: ${b.id}`);
+      await prisma.build.update({
+        where: { id: b.id },
+        data: {
+          status: 'FAILED',
+          logs: (b.logs || '') + '\n\n❌ Build interrompido devido a reinicialização do runner.\n'
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Error cleaning stuck builds on startup:', e.message);
+  }
+}
+
+cleanupStuckBuildsOnStartup();
+
 function getMachineSpecs() {
   try {
     const sysInfo = execSync('system_profiler SPHardwareDataType 2>/dev/null').toString();
@@ -154,6 +191,7 @@ async function processBuilds() {
 
     if (!build) return;
 
+    clearFlutterLock();
     const detectedMachine = getMachineSpecs();
     console.log(`\n▶ Processing build: ${build.id} on ${detectedMachine}`);
 
@@ -231,6 +269,7 @@ async function processBuilds() {
 
       // STEP 4: Get packages
       if (isFlutter) {
+        clearFlutterLock();
         await startStep(build.id, 'Get packages');
         await appendLog(build.id, `🦋 Flutter project detected...\n`);
         const envPath = path.join(projectDir, '.env');
@@ -239,6 +278,7 @@ async function processBuilds() {
         }
         const flutterCmd = path.join(process.env.HOME || '/Users/diovaniomota', 'development/flutter/bin/flutter');
         await runCommand(flutterCmd, ['clean'], projectDir, build.id, fastlaneEnv);
+        clearFlutterLock();
         await runCommand(flutterCmd, ['pub', 'get'], projectDir, build.id, fastlaneEnv);
         await endStep(build.id, 'Get packages');
       }
