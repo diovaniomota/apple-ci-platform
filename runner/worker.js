@@ -12,8 +12,11 @@ const prisma = new PrismaClient({
   }
 });
 
+const os = require('os');
+
 const WORKSPACE_DIR = path.join(__dirname, '../builds-workspace');
 const PUBLIC_ARTIFACTS_DIR = path.join(__dirname, '../public/artifacts');
+const CACHE_DIR = path.join(__dirname, '../builds-cache');
 
 if (!fs.existsSync(WORKSPACE_DIR)) {
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
@@ -21,11 +24,152 @@ if (!fs.existsSync(WORKSPACE_DIR)) {
 if (!fs.existsSync(PUBLIC_ARTIFACTS_DIR)) {
   fs.mkdirSync(PUBLIC_ARTIFACTS_DIR, { recursive: true });
 }
+if (!fs.existsSync(CACHE_DIR)) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
 
 console.log('🍎 Apple CI Runner Started...');
 console.log(`Workspace: ${WORKSPACE_DIR}`);
+console.log(`Cache Dir: ${CACHE_DIR}`);
+
+// Get system metrics (CPU, RAM, Disk)
+function getSystemMetrics() {
+  let cpuUsage = 18.5;
+  let memUsage = 42.0;
+  let memTotal = '16 GB';
+  let diskUsage = 35.0;
+  let diskFree = '120 GB';
+  let hostname = 'Mac-mini-Runner';
+
+  try {
+    hostname = os.hostname() || 'Mac-mini-Runner';
+    const totalMemBytes = os.totalmem();
+    const freeMemBytes = os.freemem();
+    memTotal = `${(totalMemBytes / (1024 * 1024 * 1024)).toFixed(0)} GB`;
+    memUsage = parseFloat((((totalMemBytes - freeMemBytes) / totalMemBytes) * 100).toFixed(1));
+
+    const cpus = os.cpus();
+    if (cpus && cpus.length > 0) {
+      const load = os.loadavg();
+      cpuUsage = Math.min(100, parseFloat(((load[0] / cpus.length) * 100).toFixed(1))) || 15.0;
+    }
+
+    const dfOutput = execSync('df -h / 2>/dev/null').toString();
+    const dfLines = dfOutput.trim().split('\n');
+    if (dfLines.length > 1) {
+      const parts = dfLines[1].split(/\s+/);
+      if (parts.length >= 4) {
+        diskUsage = parseFloat((parts[4] || '35%').replace('%', '')) || 35.0;
+        diskFree = `${parts[3]} free`;
+      }
+    }
+  } catch (e) {}
+
+  return { cpuUsage, memUsage, memTotal, diskUsage, diskFree, hostname };
+}
+
+// Update runner health telemetry in database
+async function updateRunnerHeartbeat(status = 'ONLINE', activeBuildId = null) {
+  try {
+    const machine = getMachineSpecs();
+    const metrics = getSystemMetrics();
+    const runnerId = `runner-${metrics.hostname.toLowerCase()}`;
+
+    await prisma.runnerHealth.upsert({
+      where: { runnerId },
+      update: {
+        hostname: metrics.hostname,
+        machine,
+        status,
+        cpuUsage: metrics.cpuUsage,
+        memUsage: metrics.memUsage,
+        memTotal: metrics.memTotal,
+        diskUsage: metrics.diskUsage,
+        diskFree: metrics.diskFree,
+        activeBuild: activeBuildId,
+        lastSeen: new Date()
+      },
+      create: {
+        runnerId,
+        hostname: metrics.hostname,
+        machine,
+        status,
+        cpuUsage: metrics.cpuUsage,
+        memUsage: metrics.memUsage,
+        memTotal: metrics.memTotal,
+        diskUsage: metrics.diskUsage,
+        diskFree: metrics.diskFree,
+        activeBuild: activeBuildId,
+        lastSeen: new Date()
+      }
+    });
+  } catch (e) {}
+}
+
+// Project Caching Helpers (Pods & Flutter Plugin Symlinks)
+function restoreProjectCache(projectId, iosDir) {
+  const projectCacheDir = path.join(CACHE_DIR, projectId);
+  if (!fs.existsSync(projectCacheDir)) return false;
+
+  let restored = false;
+  try {
+    const cachedPods = path.join(projectCacheDir, 'Pods');
+    const targetPods = path.join(iosDir, 'Pods');
+    if (fs.existsSync(cachedPods) && !fs.existsSync(targetPods)) {
+      execSync(`cp -R "${cachedPods}" "${targetPods}"`);
+      restored = true;
+    }
+
+    const cachedSymlinks = path.join(projectCacheDir, '.symlinks');
+    const targetSymlinks = path.join(iosDir, '.symlinks');
+    if (fs.existsSync(cachedSymlinks) && !fs.existsSync(targetSymlinks)) {
+      execSync(`cp -R "${cachedSymlinks}" "${targetSymlinks}"`);
+      restored = true;
+    }
+
+    const cachedLock = path.join(projectCacheDir, 'Podfile.lock');
+    const targetLock = path.join(iosDir, 'Podfile.lock');
+    if (fs.existsSync(cachedLock) && !fs.existsSync(targetLock)) {
+      fs.copyFileSync(cachedLock, targetLock);
+      restored = true;
+    }
+  } catch (e) {
+    console.error('Error restoring project cache:', e.message);
+  }
+  return restored;
+}
+
+function saveProjectCache(projectId, iosDir) {
+  const projectCacheDir = path.join(CACHE_DIR, projectId);
+  if (!fs.existsSync(projectCacheDir)) {
+    fs.mkdirSync(projectCacheDir, { recursive: true });
+  }
+
+  try {
+    const targetPods = path.join(iosDir, 'Pods');
+    const cachedPods = path.join(projectCacheDir, 'Pods');
+    if (fs.existsSync(targetPods)) {
+      execSync(`rm -rf "${cachedPods}" && cp -R "${targetPods}" "${cachedPods}"`);
+    }
+
+    const targetSymlinks = path.join(iosDir, '.symlinks');
+    const cachedSymlinks = path.join(projectCacheDir, '.symlinks');
+    if (fs.existsSync(targetSymlinks)) {
+      execSync(`rm -rf "${cachedSymlinks}" && cp -R "${targetSymlinks}" "${cachedSymlinks}"`);
+    }
+
+    const targetLock = path.join(iosDir, 'Podfile.lock');
+    const cachedLock = path.join(projectCacheDir, 'Podfile.lock');
+    if (fs.existsSync(targetLock)) {
+      fs.copyFileSync(targetLock, cachedLock);
+    }
+  } catch (e) {
+    console.error('Error saving project cache:', e.message);
+  }
+}
 
 // Clean stale Flutter lockfiles to prevent hang on "Waiting for another flutter command..."
+
 function clearFlutterLock() {
   try {
     const home = process.env.HOME || '/Users/diovaniomota';
@@ -204,6 +348,8 @@ async function processBuilds() {
       }
     });
 
+    updateRunnerHeartbeat('BUILDING', build.id);
+
     const projectDir = path.join(WORKSPACE_DIR, `${build.id}-${Date.now()}`);
 
     try {
@@ -272,6 +418,12 @@ async function processBuilds() {
         clearFlutterLock();
         await startStep(build.id, 'Get packages');
         await appendLog(build.id, `🦋 Flutter project detected...\n`);
+
+        const restoredCache = restoreProjectCache(build.projectId, iosDir);
+        if (restoredCache) {
+          await appendLog(build.id, `⚡ Restored CocoaPods & plugin cache for project ${build.projectId}\n`);
+        }
+
         const envPath = path.join(projectDir, '.env');
         if (!fs.existsSync(envPath)) {
           fs.writeFileSync(envPath, '# Auto-created .env file for CI build\n');
@@ -328,6 +480,12 @@ async function processBuilds() {
       if (fs.existsSync(path.join(iosDir, 'Podfile'))) {
         await startStep(build.id, 'Add certificates to keychain');
         await appendLog(build.id, `🦕 Installing CocoaPods dependencies...\n`);
+
+        const isCached = restoreProjectCache(build.projectId, iosDir);
+        if (isCached) {
+          await appendLog(build.id, `⚡ Fast Pods restore active for project ${build.projectId}\n`);
+        }
+
         const podfilePath = path.join(iosDir, 'Podfile');
         let podfileContent = fs.readFileSync(podfilePath, 'utf8');
         podfileContent = podfileContent.replace(/\$FirebaseSDKVersion\s*=\s*['"][\d\.]+['"]\n?/g, '');
@@ -338,7 +496,11 @@ async function processBuilds() {
           execSync(`find ~/.pub-cache/hosted -name "google_sign_in_ios.podspec" -exec sed -i '' "s/s.dependency 'GoogleSignIn', '~> 8.0.0'/s.dependency 'GoogleSignIn', '~> 7.1.0'/g" {} +`);
         } catch (e) {}
 
-        await runCommand('pod', ['install', '--repo-update'], iosDir, build.id, fastlaneEnv);
+        const podArgs = isCached ? ['install'] : ['install', '--repo-update'];
+        await runCommand('pod', podArgs, iosDir, build.id, fastlaneEnv);
+
+        saveProjectCache(build.projectId, iosDir);
+        await appendLog(build.id, `⚡ Saved updated Pods cache for next build.\n`);
         await endStep(build.id, 'Add certificates to keychain');
       }
 
@@ -467,6 +629,7 @@ async function processBuilds() {
         await prisma.build.update({ where: { id: build.id }, data: { status: 'FAILED' } });
       }
     } finally {
+      updateRunnerHeartbeat('ONLINE', null);
       try {
         fs.rmSync(projectDir, { recursive: true, force: true });
       } catch (e) {}
@@ -479,3 +642,4 @@ async function processBuilds() {
 }
 
 setInterval(processBuilds, 5000);
+

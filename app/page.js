@@ -32,6 +32,37 @@ export default async function Dashboard() {
         </Link>
       </div>
 
+      {/* Runner Health & Smart Cache Banner */}
+      <div
+        style={{
+          margin: '24px 0 32px 0',
+          padding: '16px 20px',
+          borderRadius: '12px',
+          background: 'rgba(15, 23, 42, 0.6)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'flex',
+          justify: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 10px #10b981' }} />
+            <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#f8fafc' }}>Mac mini Runner Active</span>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
+          <span style={{ fontSize: '0.825rem', color: '#94a3b8' }}>
+            ⚡ <b>Smart Cache Ativo</b> (Pods & Flutter Plugin Symlinks)
+          </span>
+        </div>
+
+        <Link href="/analytics" style={{ fontSize: '0.825rem', color: '#3b82f6', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+          Ver Telemetria & Analytics →
+        </Link>
+      </div>
+
       <div className="projects-grid">
         {projects.length === 0 && (
           <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', background: 'rgba(30, 41, 59, 0.4)', borderRadius: '12px' }}>

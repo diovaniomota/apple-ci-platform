@@ -38,3 +38,20 @@ model Setting {
   value     String
   updatedAt DateTime @updatedAt
 }
+
+model RunnerHealth {
+  id          String   @id @default(uuid())
+  runnerId    String   @unique
+  hostname    String   @default("Mac-mini")
+  machine     String   @default("Mac mini")
+  status      String   @default("ONLINE") // ONLINE, BUILDING, OFFLINE
+  cpuUsage    Float    @default(0.0)
+  memUsage    Float    @default(0.0)
+  memTotal    String   @default("16 GB")
+  diskUsage   Float    @default(0.0)
+  diskFree    String   @default("100 GB")
+  activeBuild String?
+  lastSeen    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
