@@ -207,27 +207,6 @@ export default function LoginPage() {
             {!loading && <ArrowRight size={18} />}
           </button>
         </form>
-
-        {/* Initial Seed Default Helper */}
-        <div
-          onClick={fillDefaultCredentials}
-          style={{
-            marginTop: '28px',
-            padding: '12px 16px',
-            background: 'rgba(59, 130, 246, 0.08)',
-            border: '1px solid rgba(59, 130, 246, 0.2)',
-            borderRadius: '10px',
-            fontSize: '0.8rem',
-            color: '#93c5fd',
-            textAlign: 'center',
-            cursor: 'pointer',
-            transition: 'background 0.2s ease'
-          }}
-          title="Clique para preencher a conta inicial padrão"
-        >
-          💡 <b>Primeiro Acesso?</b> Clique aqui para preencher:<br />
-          <code>admin@apple-ci.com</code> / <code>admin123</code>
-        </div>
       </div>
     </div>
   );
