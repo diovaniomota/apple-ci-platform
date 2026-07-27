@@ -7,6 +7,7 @@ export async function GET() {
   try {
     const projects = await prisma.project.findMany({
       include: {
+        appleAccount: true,
         builds: {
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -23,7 +24,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, repoUrl, branch, buildScheme, bundleId } = body;
+    const { name, repoUrl, branch, buildScheme, bundleId, appleAccountId } = body;
     
     if (!name || !repoUrl) {
       return NextResponse.json({ error: 'Name and repoUrl are required' }, { status: 400 });
@@ -35,7 +36,11 @@ export async function POST(request) {
         repoUrl,
         branch: branch || 'main',
         buildScheme: buildScheme || 'App',
-        bundleId: bundleId || 'com.example.app'
+        bundleId: bundleId || 'com.example.app',
+        appleAccountId: appleAccountId || null
+      },
+      include: {
+        appleAccount: true
       }
     });
     

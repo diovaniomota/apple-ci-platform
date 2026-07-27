@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 export default async function Dashboard() {
   const projects = await prisma.project.findMany({
     include: {
+      appleAccount: true,
       builds: {
         orderBy: { createdAt: 'desc' },
         take: 1,
@@ -85,9 +86,20 @@ export default async function Dashboard() {
                 </div>
                 <p>{project.repoUrl}</p>
                 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                  <GitBranch size={14} />
-                  <span>{project.branch}</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <GitBranch size={14} />
+                    <span>{project.branch}</span>
+                  </div>
+                  {project.appleAccount ? (
+                    <span style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)', color: '#34d399', fontSize: '0.725rem', padding: '2px 8px', borderRadius: '8px', fontWeight: 600 }}>
+                      🔐 {project.appleAccount.name}
+                    </span>
+                  ) : (
+                    <span style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#94a3b8', fontSize: '0.725rem', padding: '2px 8px', borderRadius: '8px' }}>
+                      Conta Padrão
+                    </span>
+                  )}
                 </div>
 
                 <div className="card-footer">

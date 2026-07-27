@@ -397,7 +397,11 @@ async function processBuilds() {
   try {
     const build = await prisma.build.findFirst({
       where: { status: 'PENDING' },
-      include: { project: true }
+      include: {
+        project: {
+          include: { appleAccount: true }
+        }
+      }
     });
 
     if (!build) return;
@@ -427,6 +431,22 @@ async function processBuilds() {
       await appendLog(build.id, `🚀 Build started by Apple CI Platform\nHost Machine: ${detectedMachine}\nUser-defined environment variables loaded\n`);
       const settings = await loadSettings();
 
+      // Load Apple Developer Account (project specific or fallback to global settings)
+      const acc = build.project?.appleAccount;
+      const appleUser = acc?.appleId || settings.APPLE_ID;
+      const teamId = acc?.teamId || settings.APPLE_TEAM_ID;
+      const matchPass = acc?.matchPassword || settings.MATCH_PASSWORD;
+      const keyId = acc?.ascKeyId || settings.ASC_KEY_ID;
+      const issuerId = acc?.ascIssuerId || settings.ASC_ISSUER_ID;
+      const matchUrl = acc?.matchGitUrl || settings.MATCH_GIT_URL;
+      const keyContent = acc?.ascKeyContent || settings.ASC_KEY_CONTENT;
+
+      if (acc) {
+        await appendLog(build.id, `🔐 Using Apple Account: "${acc.name}" (Team ID: ${acc.teamId})\n`);
+      } else if (teamId) {
+        await appendLog(build.id, `🔐 Using Global Apple Account (Team ID: ${teamId})\n`);
+      }
+
       const fastlaneEnv = {
         FASTLANE_HIDE_CHANGELOG: '1',
         FASTLANE_SKIP_UPDATE_CHECK: '1',
@@ -434,15 +454,15 @@ async function processBuilds() {
         FASTLANE_XCODEBUILD_SETTINGS_RETRIES: '6',
       };
 
-      if (settings.APPLE_ID && !settings.ASC_KEY_ID) fastlaneEnv.FASTLANE_USER = settings.APPLE_ID;
-      if (settings.APPLE_TEAM_ID) fastlaneEnv.FASTLANE_TEAM_ID = settings.APPLE_TEAM_ID;
-      if (settings.MATCH_PASSWORD) fastlaneEnv.MATCH_PASSWORD = settings.MATCH_PASSWORD;
-      if (settings.ASC_KEY_ID) fastlaneEnv.APP_STORE_CONNECT_API_KEY_KEY_ID = settings.ASC_KEY_ID;
-      if (settings.ASC_ISSUER_ID) fastlaneEnv.APP_STORE_CONNECT_API_KEY_ISSUER_ID = settings.ASC_ISSUER_ID;
-      if (settings.MATCH_GIT_URL) fastlaneEnv.MATCH_GIT_URL = settings.MATCH_GIT_URL;
-      if (settings.ASC_KEY_CONTENT) {
-        const p8Path = path.join(WORKSPACE_DIR, 'AuthKey.p8');
-        fs.writeFileSync(p8Path, settings.ASC_KEY_CONTENT);
+      if (appleUser && !keyId) fastlaneEnv.FASTLANE_USER = appleUser;
+      if (teamId) fastlaneEnv.FASTLANE_TEAM_ID = teamId;
+      if (matchPass) fastlaneEnv.MATCH_PASSWORD = matchPass;
+      if (keyId) fastlaneEnv.APP_STORE_CONNECT_API_KEY_KEY_ID = keyId;
+      if (issuerId) fastlaneEnv.APP_STORE_CONNECT_API_KEY_ISSUER_ID = issuerId;
+      if (matchUrl) fastlaneEnv.MATCH_GIT_URL = matchUrl;
+      if (keyContent) {
+        const p8Path = path.join(WORKSPACE_DIR, `AuthKey_${build.id}.p8`);
+        fs.writeFileSync(p8Path, keyContent);
         fastlaneEnv.APP_STORE_CONNECT_API_KEY_KEY_FILEPATH = p8Path;
       }
 

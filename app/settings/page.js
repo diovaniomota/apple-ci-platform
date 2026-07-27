@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Save, Key, GitBranch, Upload, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
+import { Save, Key, GitBranch, Upload, Eye, EyeOff, CheckCircle, AlertCircle, Plus, Trash2, ShieldCheck, UserCheck } from 'lucide-react';
 
-function SettingField({ label, field, description, type = 'text', value, onChange, masked }) {
+function SettingField({ label, field, description, value, onChange, masked }) {
   const [show, setShow] = useState(false);
 
   return (
@@ -30,9 +30,7 @@ function SettingField({ label, field, description, type = 'text', value, onChang
             outline: 'none',
             transition: 'border-color 0.2s ease',
           }}
-          onFocus={e => e.target.style.borderColor = 'var(--primary)'}
-          onBlur={e => e.target.style.borderColor = 'var(--border)'}
-          placeholder={`Enter your ${label}`}
+          placeholder={`Enter ${label}`}
         />
         {masked && (
           <button
@@ -71,26 +69,24 @@ function TextareaSettingField({ label, field, description, value, onChange }) {
           fontSize: '0.9rem',
           outline: 'none',
           fontFamily: 'monospace',
-          transition: 'border-color 0.2s ease',
         }}
-        onFocus={e => e.target.style.borderColor = 'var(--primary)'}
-        onBlur={e => e.target.style.borderColor = 'var(--border)'}
         placeholder={`Paste the content of your .p8 file here...`}
       />
     </div>
   );
 }
 
-
-
-function SectionCard({ icon: Icon, title, children, color = '#3b82f6' }) {
+function SectionCard({ icon: Icon, title, children, color = '#3b82f6', actionButton }) {
   return (
     <div className="glass-panel" style={{ marginBottom: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ background: `${color}22`, borderRadius: '8px', padding: '8px', display: 'flex' }}>
-          <Icon size={20} color={color} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ background: `${color}22`, borderRadius: '8px', padding: '8px', display: 'flex' }}>
+            <Icon size={20} color={color} />
+          </div>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: '600', margin: 0 }}>{title}</h2>
         </div>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: '600' }}>{title}</h2>
+        {actionButton}
       </div>
       {children}
     </div>
@@ -99,14 +95,38 @@ function SectionCard({ icon: Icon, title, children, color = '#3b82f6' }) {
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState({});
+  const [appleAccounts, setAppleAccounts] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState(null); // 'success' | 'error' | null
+  const [saveStatus, setSaveStatus] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newAcc, setNewAcc] = useState({
+    name: '',
+    appleId: '',
+    teamId: '',
+    ascKeyId: '',
+    ascIssuerId: '',
+    ascKeyContent: '',
+    matchGitUrl: '',
+    matchPassword: ''
+  });
+  const [addingAcc, setAddingAcc] = useState(false);
 
   useEffect(() => {
+    fetchSettings();
+    fetchAppleAccounts();
+  }, []);
+
+  const fetchSettings = () => {
     fetch('/api/settings')
       .then(r => r.json())
       .then(data => setSettings(data));
-  }, []);
+  };
+
+  const fetchAppleAccounts = () => {
+    fetch('/api/apple-accounts')
+      .then(r => r.json())
+      .then(data => setAppleAccounts(data));
+  };
 
   const handleChange = (key, val) => {
     setSettings(prev => ({ ...prev, [key]: val }));
@@ -134,13 +154,53 @@ export default function SettingsPage() {
     }
   };
 
+  const handleAddAppleAccount = async (e) => {
+    e.preventDefault();
+    if (!newAcc.name || !newAcc.teamId) {
+      alert('Nome da conta e Team ID são obrigatórios.');
+      return;
+    }
+    setAddingAcc(true);
+    try {
+      const res = await fetch('/api/apple-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAcc)
+      });
+      if (res.ok) {
+        setShowAddModal(false);
+        setNewAcc({ name: '', appleId: '', teamId: '', ascKeyId: '', ascIssuerId: '', ascKeyContent: '', matchGitUrl: '', matchPassword: '' });
+        fetchAppleAccounts();
+      } else {
+        const err = await res.json();
+        alert(`Erro ao salvar conta: ${err.error || 'Erro desconhecido'}`);
+      }
+    } catch (err) {
+      alert('Falha de conexão ao criar conta.');
+    } finally {
+      setAddingAcc(false);
+    }
+  };
+
+  const handleDeleteAppleAccount = async (id, name) => {
+    if (!confirm(`Deseja realmente remover a conta "${name}"?`)) return;
+    try {
+      const res = await fetch(`/api/apple-accounts/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchAppleAccounts();
+      }
+    } catch (e) {
+      alert('Erro ao excluir conta.');
+    }
+  };
+
   return (
-    <div style={{ maxWidth: '750px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '780px', margin: '0 auto', paddingBottom: '60px' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
           <h1 style={{ fontSize: '2rem', marginBottom: '6px' }}>Settings</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Configure your Apple Developer credentials and build pipeline.</p>
+          <p style={{ color: 'var(--text-muted)' }}>Gerencie múltiplas contas Apple Developer e parâmetros globais do pipeline.</p>
         </div>
         <button
           className="btn-primary"
@@ -149,83 +209,120 @@ export default function SettingsPage() {
           style={{ padding: '12px 24px', gap: '8px' }}
         >
           {saveStatus === 'success' ? (
-            <><CheckCircle size={18} /> Saved!</>
+            <><CheckCircle size={18} /> Salvo!</>
           ) : saveStatus === 'error' ? (
-            <><AlertCircle size={18} /> Error</>
+            <><AlertCircle size={18} /> Erro</>
           ) : (
-            <><Save size={18} /> {saving ? 'Saving...' : 'Save Changes'}</>
+            <><Save size={18} /> {saving ? 'Salvando...' : 'Salvar Padrões Globais'}</>
           )}
         </button>
       </div>
 
-      {/* Apple Developer Account */}
-      <SectionCard icon={Key} title="Apple Developer Account" color="#3b82f6">
-        <SettingField
-          label="Apple ID"
-          field="APPLE_ID"
-          description="The email address you use to log in to App Store Connect."
-          value={settings.APPLE_ID}
-          onChange={handleChange}
-        />
-        <SettingField
-          label="Team ID"
-          field="APPLE_TEAM_ID"
-          description="Your 10-character Apple Developer Team ID. Found at developer.apple.com/account → Membership."
-          value={settings.APPLE_TEAM_ID}
-          onChange={handleChange}
-        />
+      {/* MULTIPLE APPLE DEVELOPER ACCOUNTS SECTION */}
+      <SectionCard
+        icon={UserCheck}
+        title="Contas de Desenvolvedor Apple (Multi-Account)"
+        color="#10b981"
+        actionButton={
+          <button
+            className="btn-primary"
+            onClick={() => setShowAddModal(true)}
+            style={{ padding: '8px 16px', fontSize: '0.875rem', gap: '6px', background: '#0066ff' }}
+          >
+            <Plus size={16} /> Nova Conta Apple
+          </button>
+        }
+      >
+        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
+          Cadastre contas de desenvolvedor Apple individuais (Pessoal, Empresa X, Cliente Y). Ao criar um novo projeto, você poderá escolher qual conta utilizar para assinar e subir o binário no TestFlight.
+        </p>
+
+        {appleAccounts.length === 0 ? (
+          <div style={{ background: 'rgba(30, 41, 59, 0.4)', borderRadius: '10px', padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            Nenhuma conta Apple cadastrada ainda. Clique no botão <strong>"+ Nova Conta Apple"</strong> para adicionar.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {appleAccounts.map(acc => (
+              <div
+                key={acc.id}
+                style={{
+                  background: 'rgba(15, 23, 42, 0.8)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: '700', margin: 0, color: '#f8fafc' }}>
+                      {acc.name}
+                    </h3>
+                    <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', padding: '2px 8px', borderRadius: '10px', fontSize: '0.725rem', fontWeight: 600 }}>
+                      Team ID: {acc.teamId}
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.825rem', color: 'var(--text-muted)' }}>
+                    {acc.appleId ? `Apple ID: ${acc.appleId}` : 'Sem e-mail cadastrado'} • Key ID: {acc.ascKeyId || 'Padrão'} • {acc.projects?.length || 0} Projeto(s) Vinculado(s)
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => handleDeleteAppleAccount(acc.id, acc.name)}
+                  style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', borderRadius: '8px', padding: '8px', cursor: 'pointer' }}
+                  title="Excluir Conta"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </SectionCard>
 
-      {/* App Store Connect API */}
-      <SectionCard icon={Upload} title="App Store Connect API Key" color="#10b981">
-        <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px', padding: '12px', marginBottom: '20px', fontSize: '0.85rem', color: '#94a3b8' }}>
-          💡 Create an API key at <a href="https://appstoreconnect.apple.com/access/integrations/api" target="_blank" rel="noreferrer" style={{ color: '#3b82f6' }}>App Store Connect → Users → Integrations → Keys</a>. Download the <strong>.p8</strong> file and note the <strong>Key ID</strong> and <strong>Issuer ID</strong>.
+      {/* ADD APPLE ACCOUNT MODAL / FORM */}
+      {showAddModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto', color: '#f8fafc' }}>
+            <h2 style={{ fontSize: '1.3rem', fontWeight: '700', marginBottom: '8px' }}>
+              Cadastrar Nova Conta Apple Developer
+            </h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '24px' }}>
+              Preencha os dados da conta da Apple (Team ID e credenciais da API do App Store Connect).
+            </p>
+
+            <form onSubmit={handleAddAppleAccount}>
+              <SettingField label="Nome de Identificação (ex: Empresa X)" field="name" value={newAcc.name} onChange={(f, v) => setNewAcc({ ...newAcc, name: v })} />
+              <SettingField label="Apple ID (E-mail)" field="appleId" value={newAcc.appleId} onChange={(f, v) => setNewAcc({ ...newAcc, appleId: v })} />
+              <SettingField label="Apple Team ID (ex: Y96DN6W9YV)" field="teamId" value={newAcc.teamId} onChange={(f, v) => setNewAcc({ ...newAcc, teamId: v })} />
+              <SettingField label="App Store Connect Key ID" field="ascKeyId" value={newAcc.ascKeyId} onChange={(f, v) => setNewAcc({ ...newAcc, ascKeyId: v })} />
+              <SettingField label="App Store Connect Issuer ID (UUID)" field="ascIssuerId" value={newAcc.ascIssuerId} onChange={(f, v) => setNewAcc({ ...newAcc, ascIssuerId: v })} />
+              <TextareaSettingField label="Conteúdo do Arquivo .p8" field="ascKeyContent" value={newAcc.ascKeyContent} onChange={(f, v) => setNewAcc({ ...newAcc, ascKeyContent: v })} />
+              <SettingField label="Fastlane Match Git URL" field="matchGitUrl" value={newAcc.matchGitUrl} onChange={(f, v) => setNewAcc({ ...newAcc, matchGitUrl: v })} />
+              <SettingField label="Fastlane Match Password" field="matchPassword" value={newAcc.matchPassword} onChange={(f, v) => setNewAcc({ ...newAcc, matchPassword: v })} masked />
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '28px' }}>
+                <button type="button" onClick={() => setShowAddModal(false)} className="btn-secondary" style={{ padding: '10px 20px', background: 'transparent', border: '1px solid var(--border)', color: '#94a3b8', borderRadius: '8px', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary" disabled={addingAcc} style={{ padding: '10px 24px', borderRadius: '8px' }}>
+                  {addingAcc ? 'Salvando...' : 'Salvar Conta Apple'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
+      )}
 
-        <SettingField
-          label="Key ID"
-          field="ASC_KEY_ID"
-          description="The 10-character Key ID from App Store Connect (e.g. ABC1234567)."
-          value={settings.ASC_KEY_ID}
-          onChange={handleChange}
-        />
-        <SettingField
-          label="Issuer ID"
-          field="ASC_ISSUER_ID"
-          description="The UUID Issuer ID from App Store Connect (e.g. 69a6de7e-xxxx-xxxx-xxxx-xxxxxxxxxxxx)."
-          value={settings.ASC_ISSUER_ID}
-          onChange={handleChange}
-        />
-        <TextareaSettingField
-          label="Content of .p8 Key File"
-          field="ASC_KEY_CONTENT"
-          description="Cole o conteúdo do arquivo .p8 baixado da Apple (começa com -----BEGIN PRIVATE KEY-----)."
-          value={settings.ASC_KEY_CONTENT}
-          onChange={handleChange}
-        />
-      </SectionCard>
-
-      {/* Fastlane Match */}
-      <SectionCard icon={GitBranch} title="Fastlane Match (Code Signing)" color="#8b5cf6">
-        <div style={{ background: 'rgba(139, 92, 246, 0.08)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px', padding: '12px', marginBottom: '20px', fontSize: '0.85rem', color: '#94a3b8' }}>
-          💡 Fastlane Match armazena seus certificados iOS e provisioning profiles criptografados em um repositório Git privado. Crie um repositório privado no GitHub (ex: <strong>meu-usuario/ios-certs</strong>) e informe a URL abaixo.
-        </div>
-
-        <SettingField
-          label="Match Git URL"
-          field="MATCH_GIT_URL"
-          description="URL HTTPS do seu repositório privado de certificados (ex: https://github.com/usuario/ios-certs.git)."
-          value={settings.MATCH_GIT_URL}
-          onChange={handleChange}
-        />
-        <SettingField
-          label="Match Password"
-          field="MATCH_PASSWORD"
-          description="Senha usada para criptografar os certificados dentro do repositório."
-          value={settings.MATCH_PASSWORD}
-          onChange={handleChange}
-          masked
-        />
+      {/* GLOBAL DEFAULT SETTINGS SECTION */}
+      <SectionCard icon={Key} title="Configurações Globais Fallback" color="#3b82f6">
+        <SettingField label="Apple ID Padrão" field="APPLE_ID" description="E-mail padrão para projetos sem conta específica." value={settings.APPLE_ID} onChange={handleChange} />
+        <SettingField label="Team ID Padrão" field="APPLE_TEAM_ID" description="Team ID de 10 caracteres padrão da Apple." value={settings.APPLE_TEAM_ID} onChange={handleChange} />
+        <SettingField label="Match Git URL Padrão" field="MATCH_GIT_URL" description="URL HTTPS do repositório Git de certificados padrão." value={settings.MATCH_GIT_URL} onChange={handleChange} />
+        <SettingField label="Match Password Padrão" field="MATCH_PASSWORD" description="Senha do Match padrão." value={settings.MATCH_PASSWORD} onChange={handleChange} masked />
       </SectionCard>
     </div>
   );

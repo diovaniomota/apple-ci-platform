@@ -1,19 +1,28 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function NewProject() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [appleAccounts, setAppleAccounts] = useState([]);
   
   const [formData, setFormData] = useState({
     name: '',
     repoUrl: '',
     branch: 'main',
     buildScheme: 'App',
-    bundleId: 'com.example.app'
+    bundleId: 'com.example.app',
+    appleAccountId: ''
   });
+
+  useEffect(() => {
+    fetch('/api/apple-accounts')
+      .then(r => r.json())
+      .then(data => setAppleAccounts(data))
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -35,7 +44,7 @@ export default function NewProject() {
   };
 
   return (
-    <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '600px', margin: '0 auto', paddingBottom: '60px' }}>
       <h1 style={{ marginBottom: '24px' }}>Create New Project</h1>
       <form onSubmit={handleSubmit} className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         
@@ -98,6 +107,27 @@ export default function NewProject() {
               placeholder="com.example.app"
             />
           </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)' }}>
+            Conta de Desenvolvedor Apple
+          </label>
+          <select
+            value={formData.appleAccountId}
+            onChange={e => setFormData({ ...formData, appleAccountId: e.target.value })}
+            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(15, 23, 42, 0.9)', color: 'white', fontSize: '0.9rem' }}
+          >
+            <option value="">-- Usar Conta Padrão das Configurações --</option>
+            {appleAccounts.map(acc => (
+              <option key={acc.id} value={acc.id}>
+                🔐 {acc.name} (Team ID: {acc.teamId})
+              </option>
+            ))}
+          </select>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+            Selecione qual conta de desenvolvedor assinará e enviará este projeto para a Apple.
+          </p>
         </div>
 
         <button type="submit" className="btn-primary" style={{ marginTop: '16px', justifyContent: 'center' }} disabled={loading}>
