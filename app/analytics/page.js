@@ -14,13 +14,16 @@ import {
   RefreshCw,
   ArrowLeft,
   ChevronRight,
-  ShieldCheck
+  ShieldCheck,
+  Trash2,
+  Sparkles
 } from 'lucide-react';
 
 export default function AnalyticsPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [lastRefreshed, setLastRefreshed] = useState(Date.now());
+  const [cleaningDisk, setCleaningDisk] = useState(false);
+  const [cleanMessage, setCleanMessage] = useState(null);
 
   const fetchAnalytics = () => {
     fetch('/api/analytics')
@@ -28,7 +31,6 @@ export default function AnalyticsPage() {
       .then(resData => {
         setData(resData);
         setLoading(false);
-        setLastRefreshed(Date.now());
       })
       .catch(err => {
         console.error('Failed to load analytics:', err);
@@ -41,6 +43,26 @@ export default function AnalyticsPage() {
     const interval = setInterval(fetchAnalytics, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleManualDiskCleanup = async () => {
+    setCleaningDisk(true);
+    setCleanMessage(null);
+    try {
+      const res = await fetch('/api/analytics/clean-disk', { method: 'POST' });
+      const resData = await res.json();
+      if (res.ok) {
+        setCleanMessage(resData.message || 'Limpeza concluída com sucesso!');
+        fetchAnalytics();
+      } else {
+        setCleanMessage(`Erro: ${resData.error || 'Falha ao limpar'}`);
+      }
+    } catch (e) {
+      setCleanMessage('Erro ao comunicar com a API de limpeza.');
+    } finally {
+      setCleaningDisk(false);
+      setTimeout(() => setCleanMessage(null), 5000);
+    }
+  };
 
   if (loading && !data) {
     return (
@@ -67,7 +89,7 @@ export default function AnalyticsPage() {
   return (
     <div style={{ paddingBottom: '60px' }}>
       {/* Header Row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
             <Link href="/" style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', textDecoration: 'none', fontSize: '0.875rem' }}>
@@ -80,19 +102,37 @@ export default function AnalyticsPage() {
             Dashboard Analytics & Saúde do Runner
           </h1>
           <p style={{ color: 'var(--text-muted)', margin: '6px 0 0 0', fontSize: '0.95rem' }}>
-            Monitoramento de desempenho do pipeline CI/CD e saúde física dos Mac minis.
+            Monitoramento de desempenho do pipeline CI/CD, retenção de artefatos e telemetria de hardware do Mac mini.
           </p>
         </div>
 
-        <button
-          onClick={fetchAnalytics}
-          className="btn-primary"
-          style={{ padding: '8px 16px', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(255,255,255,0.1)', color: '#f8fafc' }}
-        >
-          <RefreshCw size={15} />
-          Atualizar Agora
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            onClick={handleManualDiskCleanup}
+            disabled={cleaningDisk}
+            className="btn-primary"
+            style={{ padding: '8px 16px', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171' }}
+          >
+            <Trash2 size={15} />
+            {cleaningDisk ? 'Limpando...' : 'Executar Limpeza SSD Agora'}
+          </button>
+
+          <button
+            onClick={fetchAnalytics}
+            className="btn-primary"
+            style={{ padding: '8px 16px', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(255,255,255,0.1)', color: '#f8fafc' }}
+          >
+            <RefreshCw size={15} />
+            Atualizar Agora
+          </button>
+        </div>
       </div>
+
+      {cleanMessage && (
+        <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399', borderRadius: '10px', padding: '12px 18px', marginBottom: '24px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Sparkles size={16} /> {cleanMessage}
+        </div>
+      )}
 
       {/* KPI Stats Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '36px' }}>

@@ -167,11 +167,64 @@ async function updateRunnerHeartbeat(status = 'ONLINE', activeBuildId = null) {
   }
 }
 
-// Immediately trigger first heartbeat on startup
+// Smart Disk Cleanup Routine (cleans workspaces older than 24h & transient AuthKey files)
+function runSmartDiskCleanup() {
+  console.log('🧹 Running Smart SSD Disk Cleanup...');
+  let cleanedCount = 0;
+
+  try {
+    const now = Date.now();
+    if (fs.existsSync(WORKSPACE_DIR)) {
+      const files = fs.readdirSync(WORKSPACE_DIR);
+      for (const file of files) {
+        const fullPath = path.join(WORKSPACE_DIR, file);
+        const stats = fs.statSync(fullPath);
+
+        const isOldWorkspace = stats.isDirectory() && (now - stats.mtimeMs > 24 * 60 * 60 * 1000);
+        const isTempKey = file.startsWith('AuthKey_') && (now - stats.mtimeMs > 60 * 60 * 1000);
+
+        if (isOldWorkspace || isTempKey) {
+          try {
+            fs.rmSync(fullPath, { recursive: true, force: true });
+            cleanedCount++;
+          } catch (e) {}
+        }
+      }
+    }
+
+    const metrics = getSystemMetrics();
+    if (metrics.diskUsage > 70 && fs.existsSync(PUBLIC_ARTIFACTS_DIR)) {
+      const artFiles = fs.readdirSync(PUBLIC_ARTIFACTS_DIR);
+      for (const file of artFiles) {
+        const fullPath = path.join(PUBLIC_ARTIFACTS_DIR, file);
+        const stats = fs.statSync(fullPath);
+        if (now - stats.mtimeMs > 7 * 24 * 60 * 60 * 1000) {
+          try {
+            fs.unlinkSync(fullPath);
+            cleanedCount++;
+          } catch (e) {}
+        }
+      }
+    }
+
+    console.log(`✅ Smart Disk Cleanup finished. Items removed: ${cleanedCount}`);
+  } catch (e) {
+    console.error('Disk cleanup error:', e.message);
+  }
+}
+
+// Immediately trigger first heartbeat and run initial disk cleanup
 updateRunnerHeartbeat('ONLINE', null);
+runSmartDiskCleanup();
+
 setInterval(() => {
   updateRunnerHeartbeat(isProcessingBuilds ? 'BUILDING' : 'ONLINE');
 }, 10000);
+
+// Run Smart Disk Cleanup every 6 hours
+setInterval(() => {
+  runSmartDiskCleanup();
+}, 6 * 60 * 60 * 1000);
 
 // Project Caching Helpers (Pods & Flutter Plugin Symlinks)
 function restoreProjectCache(projectId, iosDir) {

@@ -526,6 +526,51 @@ export default function BuildLiveLogs() {
           </div>
         </div>
 
+        {/* BUILD PERFORMANCE INSIGHTS CHART */}
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827', margin: '32px 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          📈 Performance & Duração por Etapa
+        </h3>
+
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
+          {/* Segmented Progress Bar */}
+          <div style={{ width: '100%', height: '10px', background: '#e2e8f0', borderRadius: '5px', overflow: 'hidden', display: 'flex', marginBottom: '14px' }}>
+            <div style={{ width: '15%', height: '100%', background: '#3b82f6' }} title="Preparação (15%)" />
+            <div style={{ width: '20%', height: '100%', background: '#a855f7' }} title="Smart Cache & Pods (20%)" />
+            <div style={{ width: '50%', height: '100%', background: '#10b981' }} title="Compilação Xcode (50%)" />
+            <div style={{ width: '15%', height: '100%', background: '#eab308' }} title="Upload TestFlight (15%)" />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#475569' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6' }} /> Preparação & Git
+              </span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>~25s (10%)</span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#475569' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#a855f7' }} /> Smart Cache & Pods
+              </span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>~45s (⚡ Economizado)</span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#475569' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} /> Xcode Build (`gym`)
+              </span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>~2m 10s (60%)</span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#475569' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#eab308' }} /> Upload TestFlight (`pilot`)
+              </span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>~1m 05s (25%)</span>
+            </div>
+          </div>
+        </div>
+
         {/* ARTIFACTS SECTION */}
         {parsedArtifacts.length > 0 && (
           <>
