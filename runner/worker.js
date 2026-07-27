@@ -131,7 +131,7 @@ async function updateRunnerHeartbeat(status = 'ONLINE', activeBuildId = null) {
   try {
     const machine = getMachineSpecs();
     const metrics = getSystemMetrics();
-    const runnerId = `runner-${metrics.hostname.toLowerCase()}`;
+    const runnerId = process.env.RUNNER_ID || 'runner-macmini-primary';
 
     await prisma.runnerHealth.upsert({
       where: { runnerId },

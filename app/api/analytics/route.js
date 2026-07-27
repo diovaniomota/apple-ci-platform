@@ -42,6 +42,14 @@ export async function GET() {
     const nowMs = Date.now();
     let runners = [];
     try {
+      // Clean stale duplicate runner records older than 3 minutes
+      try {
+        const threeMinAgo = new Date(nowMs - 3 * 60 * 1000);
+        await prisma.runnerHealth.deleteMany({
+          where: { lastSeen: { lt: threeMinAgo } }
+        });
+      } catch (e) {}
+
       const runnerRecords = await prisma.runnerHealth.findMany({
         orderBy: { lastSeen: 'desc' }
       });
@@ -60,9 +68,9 @@ export async function GET() {
           status: displayStatus,
           cpuUsage: r.cpuUsage || 0,
           memUsage: r.memUsage || 0,
-          memTotal: r.memTotal || '16 GB',
+          memTotal: r.memTotal || '4 GB',
           diskUsage: r.diskUsage || 0,
-          diskFree: r.diskFree || '120 GB free',
+          diskFree: r.diskFree || '70 GB free',
           activeBuild: r.activeBuild,
           lastSeenAgoSec: Math.round(diffSec)
         };
