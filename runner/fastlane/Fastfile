@@ -1,16 +1,18 @@
 default_platform(:ios)
 
 platform :ios do
-  desc "Sync certificates, build, and upload to TestFlight"
-  lane :build_and_upload do
+  desc "Build iOS app (.ipa) only"
+  lane :build_app do
     setup_ci
 
-    app_store_connect_api_key(
-      key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
-      issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
-      key_filepath: ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"],
-      in_house: false
-    )
+    if ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"] && !ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"].empty?
+      app_store_connect_api_key(
+        key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
+        issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+        key_filepath: ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"],
+        in_house: false
+      )
+    end
 
     # Code signing via Match
     match(
@@ -23,11 +25,13 @@ platform :ios do
     # Auto-increment build number from TestFlight to prevent duplicate build errors
     build_num = 1
     begin
-      latest_build = latest_testflight_build_number(
-        app_identifier: "{{BUNDLE_ID}}"
-      )
-      if latest_build && latest_build.to_i > 0
-        build_num = latest_build.to_i + 1
+      if ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"] && !ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"].empty?
+        latest_build = latest_testflight_build_number(
+          app_identifier: "{{BUNDLE_ID}}"
+        )
+        if latest_build && latest_build.to_i > 0
+          build_num = latest_build.to_i + 1
+        end
       end
     rescue => e
       UI.important("Could not fetch latest TestFlight build number: #{e.message}")
@@ -45,7 +49,6 @@ platform :ios do
     end
 
     # Update Xcode project signing settings directly for the Runner target
-    # This prevents CocoaPods targets from inheriting the profile override
     update_code_signing_settings(
       use_automatic_signing: false,
       path: "Runner.xcodeproj",
@@ -63,9 +66,28 @@ platform :ios do
       output_name: "{{SCHEME}}.ipa",
       xcargs: "DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']} CURRENT_PROJECT_VERSION=#{build_num} FLUTTER_BUILD_NUMBER=#{build_num}"
     )
+  end
 
-    # Upload to TestFlight via API Key
+  desc "Upload built .ipa to TestFlight"
+  lane :upload_app do
+    if ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"] && !ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"].empty?
+      app_store_connect_api_key(
+        key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
+        issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+        key_filepath: ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"],
+        in_house: false
+      )
+    end
+
+    ipa_path = "./build/{{SCHEME}}.ipa"
+    unless File.exist?(ipa_path)
+      # Fallback: search for any .ipa in build dir
+      found_ipas = Dir.glob("./build/*.ipa")
+      ipa_path = found_ipas.first if found_ipas.any?
+    end
+
     pilot(
+      ipa: ipa_path,
       app_identifier: "{{BUNDLE_ID}}",
       skip_waiting_for_build_processing: true,
       distribute_external: false,
@@ -73,14 +95,10 @@ platform :ios do
     )
   end
 
-  desc "Build only (no upload) — useful for testing"
-  lane :build_only do
-    gym(
-      scheme: "{{SCHEME}}",
-      export_method: "ad-hoc",
-      clean: true,
-      output_directory: "./build",
-      output_name: "{{SCHEME}}.ipa"
-    )
+  desc "Full build and upload pipeline"
+  lane :build_and_upload do
+    build_app
+    upload_app
   end
 end
+

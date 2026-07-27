@@ -174,11 +174,13 @@ function parseLogsToSteps(rawLogs, buildStatus, nowMs) {
   return CODEMAGIC_STEPS.map((def) => {
     const step = stepDataMap[def.id];
     const stepText = step.lines.join('\n');
-    const hasError = /❌|Error uploading|FAILED|Command exited with code|build failed/i.test(stepText);
+    const hasExplicitError = /❌|Error uploading|Command exited with code|\[ERROR\]|Fatal error|Build failed/i.test(stepText);
 
     let status = step.status;
 
-    if (hasError) {
+    if (step.endMs && !hasExplicitError) {
+      status = 'SUCCESS';
+    } else if (hasExplicitError) {
       status = 'FAILED';
     } else if (step.startMs && !step.endMs) {
       if (buildStatus === 'FAILED' || buildStatus === 'CANCELLED') {
@@ -186,8 +188,6 @@ function parseLogsToSteps(rawLogs, buildStatus, nowMs) {
       } else {
         status = 'RUNNING';
       }
-    } else if (step.endMs) {
-      status = 'SUCCESS';
     }
 
     let durationStr = '';

@@ -354,20 +354,10 @@ async function processBuilds() {
       // STEP 10: Build iOS
       await startStep(build.id, 'Build iOS');
       await appendLog(build.id, `🔨 Building with Xcode...\n`);
-      await runCommand('fastlane', ['build_and_upload'], iosDir, build.id, fastlaneEnv);
+      await runCommand('fastlane', ['build_app'], iosDir, build.id, fastlaneEnv);
       await endStep(build.id, 'Build iOS');
 
-      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
-
-      // STEP 11: Publishing
-      await startStep(build.id, 'Publishing');
-      await appendLog(build.id, `Uploaded to TestFlight successfully.\n`);
-      await endStep(build.id, 'Publishing');
-
-      // STEP 12: Cleaning up & Collecting Real Artifacts (.ipa, .app.zip, .dSYM.zip)
-      await startStep(build.id, 'Cleaning up');
-      await appendLog(build.id, `Cleaning build workspace and collecting build artifacts...\n`);
-
+      // Immediate Artifact Collection (.ipa, .app.zip, .dSYM.zip) right after Build iOS succeeds
       const artifactBuildDir = path.join(PUBLIC_ARTIFACTS_DIR, build.id);
       if (!fs.existsSync(artifactBuildDir)) {
         fs.mkdirSync(artifactBuildDir, { recursive: true });
@@ -441,6 +431,25 @@ async function processBuilds() {
         }
       });
 
+      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
+
+      // STEP 11: Publishing (Upload to TestFlight)
+      await startStep(build.id, 'Publishing');
+      await appendLog(build.id, `🚀 Uploading binary to TestFlight via App Store Connect API...\n`);
+      try {
+        await runCommand('fastlane', ['upload_app'], iosDir, build.id, fastlaneEnv);
+        await appendLog(build.id, `✅ Uploaded to TestFlight successfully.\n`);
+      } catch (pubErr) {
+        await appendLog(build.id, `⚠️ TestFlight upload failed: ${pubErr.message}\n`);
+        throw pubErr;
+      }
+      await endStep(build.id, 'Publishing');
+
+      if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
+
+      // STEP 12: Cleaning up
+      await startStep(build.id, 'Cleaning up');
+      await appendLog(build.id, `Cleaning build workspace and finalizing build artifacts...\n`);
       await endStep(build.id, 'Cleaning up');
 
       await appendLog(build.id, `\n✅ Build completed successfully!\n`);
