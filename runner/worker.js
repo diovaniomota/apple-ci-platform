@@ -447,11 +447,25 @@ async function processBuilds() {
         await appendLog(build.id, `🔐 Using Global Apple Account (Team ID: ${teamId})\n`);
       }
 
+      // Auto-Increment Build Number handling
+      let nextBuildNumber = build.project?.currentBuildNumber || 1;
+      if (build.project?.autoIncrementBuild !== false && build.project?.id) {
+        nextBuildNumber = (build.project?.currentBuildNumber || 1) + 1;
+        try {
+          await prisma.project.update({
+            where: { id: build.project.id },
+            data: { currentBuildNumber: nextBuildNumber }
+          });
+          await appendLog(build.id, `🏷️ Auto-incrementing Build Number to #${nextBuildNumber}\n`);
+        } catch (e) {}
+      }
+
       const fastlaneEnv = {
         FASTLANE_HIDE_CHANGELOG: '1',
         FASTLANE_SKIP_UPDATE_CHECK: '1',
         FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: '120',
         FASTLANE_XCODEBUILD_SETTINGS_RETRIES: '6',
+        BUILD_NUMBER: String(nextBuildNumber)
       };
 
       if (appleUser && !keyId) fastlaneEnv.FASTLANE_USER = appleUser;

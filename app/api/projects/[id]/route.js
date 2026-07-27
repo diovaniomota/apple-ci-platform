@@ -8,6 +8,7 @@ export async function GET(request, { params }) {
     const project = await prisma.project.findUnique({
       where: { id: params.id },
       include: {
+        appleAccount: true,
         builds: {
           orderBy: { createdAt: 'desc' }
         }
@@ -32,6 +33,12 @@ export async function PUT(request, { params }) {
         branch: body.branch,
         bundleId: body.bundleId,
         buildScheme: body.buildScheme,
+        appleAccountId: body.appleAccountId !== undefined ? (body.appleAccountId || null) : undefined,
+        autoIncrementBuild: body.autoIncrementBuild !== undefined ? Boolean(body.autoIncrementBuild) : undefined,
+        currentBuildNumber: body.currentBuildNumber !== undefined ? parseInt(body.currentBuildNumber, 10) : undefined,
+      },
+      include: {
+        appleAccount: true
       }
     });
     return NextResponse.json(updatedProject);

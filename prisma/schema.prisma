@@ -9,17 +9,19 @@ generator client {
 }
 
 model Project {
-  id             String        @id @default(uuid())
-  name           String
-  repoUrl        String
-  branch         String        @default("main")
-  buildScheme    String
-  bundleId       String
-  appleAccountId String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  builds         Build[]
-  appleAccount   AppleAccount? @relation(fields: [appleAccountId], references: [id])
+  id                  String        @id @default(uuid())
+  name                String
+  repoUrl             String
+  branch              String        @default("main")
+  buildScheme         String
+  bundleId            String
+  appleAccountId      String?
+  autoIncrementBuild  Boolean       @default(true)
+  currentBuildNumber  Int           @default(1)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  builds              Build[]
+  appleAccount        AppleAccount? @relation(fields: [appleAccountId], references: [id])
 }
 
 model AppleAccount {
