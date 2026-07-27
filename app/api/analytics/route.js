@@ -82,7 +82,7 @@ export async function GET() {
           status: runningBuilds > 0 ? 'BUILDING' : 'ONLINE',
           cpuUsage: runningBuilds > 0 ? 68.4 : 14.2,
           memUsage: 45.8,
-          memTotal: '16 GB',
+          memTotal: '8 GB',
           diskUsage: 38.2,
           diskFree: '124 GB free',
           activeBuild: runningBuilds > 0 ? builds.find(b => b.status === 'RUNNING')?.id : null,

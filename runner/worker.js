@@ -36,17 +36,29 @@ console.log(`Cache Dir: ${CACHE_DIR}`);
 function getSystemMetrics() {
   let cpuUsage = 18.5;
   let memUsage = 42.0;
-  let memTotal = '16 GB';
+  let memTotal = '8 GB';
   let diskUsage = 35.0;
-  let diskFree = '120 GB';
+  let diskFree = '120 GB free';
   let hostname = 'Mac-mini-Runner';
 
   try {
     hostname = os.hostname() || 'Mac-mini-Runner';
-    const totalMemBytes = os.totalmem();
+    let totalMemBytes = 0;
+    try {
+      totalMemBytes = parseInt(execSync('sysctl -n hw.memsize 2>/dev/null').toString().trim(), 10);
+    } catch (e) {
+      totalMemBytes = os.totalmem();
+    }
+
+    if (totalMemBytes > 0) {
+      const gbs = Math.round(totalMemBytes / (1024 * 1024 * 1024));
+      memTotal = `${gbs} GB`;
+    }
+
     const freeMemBytes = os.freemem();
-    memTotal = `${(totalMemBytes / (1024 * 1024 * 1024)).toFixed(0)} GB`;
-    memUsage = parseFloat((((totalMemBytes - freeMemBytes) / totalMemBytes) * 100).toFixed(1));
+    if (totalMemBytes > 0) {
+      memUsage = parseFloat((((totalMemBytes - freeMemBytes) / totalMemBytes) * 100).toFixed(1));
+    }
 
     const cpus = os.cpus();
     if (cpus && cpus.length > 0) {
