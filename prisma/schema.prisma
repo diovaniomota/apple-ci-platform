@@ -74,3 +74,13 @@ model RunnerHealth {
   updatedAt   DateTime @updatedAt
 }
 
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         String   @default("ADMIN") // ADMIN, DEVELOPER
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
