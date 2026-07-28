@@ -87,12 +87,13 @@ platform :ios do
       }
     end
 
-    # Build the app with explicit build number override and allow_provisioning_updates
+    # Build the app with explicit build number override.
+    # NOTE: gym has no `allow_provisioning_updates` option - the flag is passed
+    # straight to xcodebuild through xcargs below.
     gym(
       scheme: "{{SCHEME}}",
       export_method: "app-store",
       export_options: export_opts,
-      allow_provisioning_updates: true,
       clean: false,
       output_directory: "./build",
       output_name: "{{SCHEME}}.ipa",
