@@ -45,7 +45,7 @@ platform :ios do
         get_provisioning_profile(
           app_identifier: "{{BUNDLE_ID}}",
           type: "appstore",
-          force: false
+          force: true
         )
         profile_uuid = ENV["SIGH_UUID"]
         profile_name = ENV["SIGH_NAME"]
@@ -81,11 +81,12 @@ platform :ios do
       }
     end
 
-    # Build the app with explicit build number override and allowProvisioningUpdates
+    # Build the app with explicit build number override and allow_provisioning_updates
     gym(
       scheme: "{{SCHEME}}",
       export_method: "app-store",
       export_options: export_opts,
+      allow_provisioning_updates: true,
       clean: false,
       output_directory: "./build",
       output_name: "{{SCHEME}}.ipa",
