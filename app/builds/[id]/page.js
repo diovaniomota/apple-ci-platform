@@ -220,6 +220,22 @@ function parseLogsToSteps(rawLogs, buildStatus, nowMs) {
     }
   }
 
+  // Ensure pipeline continuity: any PENDING step preceding the latest active step must be marked SUCCESS
+  let maxActiveIndex = -1;
+  for (let i = 0; i < resultSteps.length; i++) {
+    if (resultSteps[i].status === 'SUCCESS' || resultSteps[i].status === 'RUNNING') {
+      maxActiveIndex = i;
+    }
+  }
+
+  if (maxActiveIndex > -1) {
+    for (let i = 0; i < maxActiveIndex; i++) {
+      if (resultSteps[i].status === 'PENDING') {
+        resultSteps[i].status = 'SUCCESS';
+      }
+    }
+  }
+
   return resultSteps;
 }
 
