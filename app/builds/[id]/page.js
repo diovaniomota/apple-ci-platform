@@ -174,7 +174,7 @@ function parseLogsToSteps(rawLogs, buildStatus, nowMs) {
     }
   });
 
-  return CODEMAGIC_STEPS.map((def) => {
+  const resultSteps = CODEMAGIC_STEPS.map((def) => {
     const step = stepDataMap[def.id];
     const stepText = step.lines.join('\n');
     const hasExplicitError = /❌|Error uploading|Command exited with code|\[ERROR\]|Fatal error|Build failed/i.test(stepText);
@@ -206,6 +206,21 @@ function parseLogsToSteps(rawLogs, buildStatus, nowMs) {
       durationStr
     };
   });
+
+  // Enforce Codemagic single active running step policy:
+  // Only the last step in RUNNING status stays RUNNING; all preceding RUNNING steps are marked SUCCESS
+  let runningFound = false;
+  for (let i = resultSteps.length - 1; i >= 0; i--) {
+    if (resultSteps[i].status === 'RUNNING') {
+      if (!runningFound) {
+        runningFound = true;
+      } else {
+        resultSteps[i].status = 'SUCCESS';
+      }
+    }
+  }
+
+  return resultSteps;
 }
 
 export default function BuildLiveLogs() {
