@@ -85,15 +85,18 @@ platform :ios do
     end
 
     # Build the app with explicit build number override and allow_provisioning_updates
+    debug_xcargs = "-allowProvisioningUpdates DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']} CURRENT_PROJECT_VERSION=#{build_num} FLUTTER_BUILD_NUMBER=#{build_num}"
+    UI.important("XCARGS_DEBUG scheme=#{ENV['FASTLANE_TEAM_ID'].inspect} => #{debug_xcargs.inspect}")
     gym(
       scheme: "{{SCHEME}}",
       export_method: "app-store",
       export_options: export_opts,
       allow_provisioning_updates: true,
       clean: false,
+      verbose: true,
       output_directory: "./build",
       output_name: "{{SCHEME}}.ipa",
-      xcargs: "-allowProvisioningUpdates DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']} CURRENT_PROJECT_VERSION=#{build_num} FLUTTER_BUILD_NUMBER=#{build_num}"
+      xcargs: debug_xcargs
     )
   end
 
