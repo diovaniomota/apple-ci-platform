@@ -159,10 +159,10 @@ platform :ios do
       clean: false,
       output_directory: "./build",
       output_name: "{{SCHEME}}.ipa",
-      xcargs: xcargs_parts.join(" "),
-      # O export (-exportArchive) é um comando separado: também precisa de
-      # allowProvisioningUpdates + API key para assinar automaticamente.
-      export_xcargs: "-allowProvisioningUpdates #{auth_flags}".strip
+      # gym repassa o xcargs para o archive E para o export - não usar
+      # export_xcargs junto, senão os flags de autenticação duplicam e o
+      # xcodebuild falha com "may only be provided once".
+      xcargs: xcargs_parts.join(" ")
     }
 
     if profile_uuid.nil? || profile_uuid.empty?
