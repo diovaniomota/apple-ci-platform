@@ -122,9 +122,24 @@ platform :ios do
     }
 
     if profile_uuid && !profile_uuid.empty?
+      export_opts[:signingStyle] = "manual"
       export_opts[:provisioningProfiles] = {
         "{{BUNDLE_ID}}" => profile_uuid
       }
+    else
+      # Sem profile manual: deixa o Xcode assinar automaticamente no export
+      # (com API key + allowProvisioningUpdates ele pode usar cloud signing,
+      # que não depende de chave privada Distribution local).
+      export_opts[:signingStyle] = "automatic"
+    end
+
+    # Autenticação do próprio xcodebuild via App Store Connect API key: sem
+    # isso, -allowProvisioningUpdates falha em máquina headless com
+    # "No Accounts: Add a new account in Accounts settings".
+    auth_flags = ""
+    key_path = ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"]
+    if key_path && !key_path.empty? && File.exist?(key_path)
+      auth_flags = "-authenticationKeyPath #{key_path} -authenticationKeyID #{ENV['APP_STORE_CONNECT_API_KEY_KEY_ID']} -authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_API_KEY_ISSUER_ID']}"
     end
 
     # Build the app with explicit build number override.
@@ -134,6 +149,7 @@ platform :ios do
     # DEVELOPMENT_TEAM vazio na linha de comando sobrescreveria o projeto com
     # string vazia - só passa quando existe um valor real.
     xcargs_parts << "DEVELOPMENT_TEAM=#{resolved_team}" if resolved_team && !resolved_team.empty?
+    xcargs_parts << auth_flags unless auth_flags.empty?
 
     gym(
       scheme: "{{SCHEME}}",
@@ -142,7 +158,10 @@ platform :ios do
       clean: false,
       output_directory: "./build",
       output_name: "{{SCHEME}}.ipa",
-      xcargs: xcargs_parts.join(" ")
+      xcargs: xcargs_parts.join(" "),
+      # O export (-exportArchive) é um comando separado: também precisa de
+      # allowProvisioningUpdates + API key para assinar automaticamente.
+      export_xcargs: "-allowProvisioningUpdates #{auth_flags}".strip
     )
   end
 
