@@ -7,7 +7,13 @@ export async function GET(request, { params }) {
   try {
     const build = await prisma.build.findUnique({
       where: { id: params.id },
-      include: { project: true }
+      include: {
+        project: {
+          include: {
+            appleAccount: true
+          }
+        }
+      }
     });
 
     if (!build) return NextResponse.json({ error: 'Build not found' }, { status: 404 });
@@ -21,16 +27,16 @@ export async function GET(request, { params }) {
     });
 
     // Fetch settings
-    const appleIdSetting = await prisma.setting.findUnique({ where: { key: 'APPLE_ID' } });
     const machineSetting = await prisma.setting.findUnique({ where: { key: 'WORKER_MACHINE_NAME' } });
 
-    const startedBy = appleIdSetting?.value || 'diovaniomotaa@gmail.com';
+    const appleAccountEmail = build.project?.appleAccount?.appleId || 'Nenhuma conta vinculada';
     const machine = machineSetting?.value || build.machine || 'Mac mini (Dual-Core Intel Core i5)';
 
     return NextResponse.json({
       ...build,
       buildIndex,
-      startedBy,
+      appleAccountEmail,
+      startedBy: appleAccountEmail,
       machine
     });
   } catch (error) {

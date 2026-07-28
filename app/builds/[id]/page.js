@@ -463,63 +463,70 @@ export default function BuildLiveLogs() {
           </div>
 
           <div style={{ display: 'flex' }}>
-            <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Index:</span>
+            <span style={{ width: '110px', color: '#6b7280', fontWeight: 400 }}>Index:</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>
               {build.buildIndex || 1}
             </span>
           </div>
 
           <div style={{ display: 'flex' }}>
-            <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Status:</span>
+            <span style={{ width: '110px', color: '#6b7280', fontWeight: 400 }}>Status:</span>
             <span style={{ fontWeight: 700, color: build.status === 'SUCCESS' ? '#059669' : build.status === 'FAILED' ? '#dc2626' : '#111827' }}>
               {statusLabel}
             </span>
           </div>
 
           <div style={{ display: 'flex' }}>
-            <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Workflow:</span>
+            <span style={{ width: '110px', color: '#6b7280', fontWeight: 400 }}>Workflow:</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>
               {build.project?.buildScheme ? `${build.project.buildScheme} Workflow` : 'iOS Workflow'}
             </span>
           </div>
 
           <div style={{ display: 'flex' }}>
-            <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Started by:</span>
-            <span style={{ fontWeight: 700, color: '#111827' }}>
-              {build.startedBy || 'diovaniomotaa@gmail.com'}
+            <span style={{ width: '110px', color: '#6b7280', fontWeight: 400 }}>Conta Apple:</span>
+            <span style={{ fontWeight: 700, color: '#2563eb' }}>
+              {build.project?.appleAccount?.appleId || build.appleAccountEmail || 'Nenhuma'}
             </span>
           </div>
 
           <div style={{ display: 'flex' }}>
-            <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Started:</span>
+            <span style={{ width: '110px', color: '#6b7280', fontWeight: 400 }}>Started by:</span>
+            <span style={{ fontWeight: 700, color: '#111827' }}>
+              {build.project?.appleAccount?.appleId || build.startedBy || 'Sistema'}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex' }}>
+            <span style={{ width: '110px', color: '#6b7280', fontWeight: 400 }}>Started:</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>
               {formatRelativeTime(build.createdAt)}
             </span>
           </div>
 
           <div style={{ display: 'flex' }}>
-            <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Duration:</span>
+            <span style={{ width: '110px', color: '#6b7280', fontWeight: 400 }}>Duration:</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>
               {totalDurationStr}
             </span>
           </div>
 
           <div style={{ display: 'flex' }}>
-            <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Machine:</span>
+            <span style={{ width: '110px', color: '#6b7280', fontWeight: 400 }}>Machine:</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>
               {build.machine || 'Mac mini'}
             </span>
           </div>
 
           <div style={{ display: 'flex' }}>
-            <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Branch:</span>
+            <span style={{ width: '110px', color: '#6b7280', fontWeight: 400 }}>Branch:</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>
               {build.project?.branch || 'main'}
             </span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span style={{ width: '90px', color: '#6b7280', fontWeight: 400 }}>Commit:</span>
+            <span style={{ width: '110px', color: '#6b7280', fontWeight: 400 }}>Commit:</span>
             <a href="#" style={{ color: '#0066ff', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ color: '#9ca3af' }}>-o-</span> {build.commit || 'b3e0011'}
             </a>
