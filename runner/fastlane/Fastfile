@@ -47,9 +47,10 @@ platform :ios do
     if !profile_uuid
       UI.message("ℹ️ Fetching App Store provisioning profile via App Store Connect API Key...")
       begin
+        # sigh has no `type` option: App Store is the default, and the other
+        # kinds are selected with the adhoc/development/developer_id flags.
         get_provisioning_profile(
           app_identifier: "{{BUNDLE_ID}}",
-          type: "appstore",
           force: true
         )
         profile_uuid = ENV["SIGH_UUID"]
@@ -68,11 +69,12 @@ platform :ios do
           code_sign_identity: "Apple Distribution"
         )
       else
+        # Automatic signing picks its own identity. Forcing "Apple Distribution"
+        # here makes Xcode fail with "conflicting provisioning settings".
         update_code_signing_settings(
           use_automatic_signing: true,
           path: "Runner.xcodeproj",
-          team_id: ENV["FASTLANE_TEAM_ID"],
-          code_sign_identity: "Apple Distribution"
+          team_id: ENV["FASTLANE_TEAM_ID"]
         )
       end
     end

@@ -652,7 +652,11 @@ async function processBuilds() {
           .replace(/ProvisioningStyle\s*=\s*[^;]+;/gi, 'ProvisioningStyle = Automatic;')
           .replace(/PROVISIONING_PROFILE\s*=\s*[^;]+;/g, '')
           .replace(/PROVISIONING_PROFILE_SPECIFIER\s*=\s*[^;]+;/g, '')
-          .replace(/"?CODE_SIGN_IDENTITY(\[sdk=[^\]]*\])?"?\s*=\s*[^;]+;/g, 'CODE_SIGN_IDENTITY = "Apple Distribution";');
+          // Drop the template's hardcoded "iPhone Developer" identity instead of
+          // forcing a distribution one: with CODE_SIGN_STYLE = Automatic, Xcode
+          // rejects a manually specified identity. The Fastfile sets it explicitly
+          // on the manual-signing paths.
+          .replace(/"?CODE_SIGN_IDENTITY(\[sdk=[^\]]*\])?"?\s*=\s*[^;]+;/g, '');
         if (teamId) {
           pbxprojContent = pbxprojContent.replace(/DEVELOPMENT_TEAM\s*=\s*[^;]+;/g, `DEVELOPMENT_TEAM = ${teamId};`);
           if (!pbxprojContent.includes('DEVELOPMENT_TEAM =')) {
