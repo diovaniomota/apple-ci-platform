@@ -526,7 +526,9 @@ async function processBuilds() {
       if (matchPass) fastlaneEnv.MATCH_PASSWORD = matchPass;
       if (keyId) fastlaneEnv.APP_STORE_CONNECT_API_KEY_KEY_ID = keyId;
       if (issuerId) fastlaneEnv.APP_STORE_CONNECT_API_KEY_ISSUER_ID = issuerId;
-      if (matchUrl) fastlaneEnv.MATCH_GIT_URL = matchUrl;
+      if (matchUrl && (matchUrl.startsWith('http://') || matchUrl.startsWith('https://') || matchUrl.startsWith('git@'))) {
+        fastlaneEnv.MATCH_GIT_URL = matchUrl;
+      }
       if (keyContent) {
         const p8Path = path.join(WORKSPACE_DIR, `AuthKey_${build.id}.p8`);
         fs.writeFileSync(p8Path, keyContent);

@@ -16,7 +16,7 @@ platform :ios do
 
     # Code signing via Match if git_url is provided
     match_url = "{{MATCH_GIT_URL}}"
-    if match_url && !match_url.strip.empty?
+    if match_url && (match_url.start_with?("http") || match_url.start_with?("git@"))
       begin
         match(
           type: "appstore",
