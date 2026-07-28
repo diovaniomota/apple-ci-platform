@@ -15,8 +15,10 @@ platform :ios do
       )
     end
 
-    # Code signing via Match if git_url is provided
+    profile_uuid = nil
+    profile_name = nil
     match_url = "{{MATCH_GIT_URL}}"
+
     if match_url && (match_url.start_with?("http") || match_url.start_with?("git@"))
       begin
         match(
@@ -33,43 +35,61 @@ platform :ios do
           code_sign_identity: "Apple Distribution"
         )
       rescue => e
-        UI.important("Match signing failed: #{e.message}. Falling back to Automatic Signing.")
-        update_code_signing_settings(
-          use_automatic_signing: true,
-          path: "Runner.xcodeproj",
-          team_id: ENV["FASTLANE_TEAM_ID"]
-        )
+        UI.important("Match signing failed: #{e.message}. Falling back to API Key Provisioning Profile.")
       end
-    else
-      UI.message("ℹ️ No Match Git URL provided, fetching App Store provisioning profile via App Store Connect API Key...")
+    end
+
+    if !profile_uuid
+      UI.message("ℹ️ Fetching App Store provisioning profile via App Store Connect API Key...")
       begin
         get_provisioning_profile(
           app_identifier: "{{BUNDLE_ID}}",
           type: "appstore",
           force: false
         )
+        profile_uuid = ENV["SIGH_UUID"]
+        profile_name = ENV["SIGH_NAME"]
+        UI.message("✅ App Store Provisioning Profile downloaded: #{profile_name} (#{profile_uuid})")
       rescue => e
         UI.important("⚠️ Provisioning profile fetch warning: #{e.message}")
       end
-      update_code_signing_settings(
-        use_automatic_signing: true,
-        path: "Runner.xcodeproj",
-        team_id: ENV["FASTLANE_TEAM_ID"]
-      )
+
+      if profile_uuid && !profile_uuid.empty?
+        update_code_signing_settings(
+          use_automatic_signing: false,
+          path: "Runner.xcodeproj",
+          team_id: ENV["FASTLANE_TEAM_ID"],
+          profile_name: profile_uuid,
+          code_sign_identity: "Apple Distribution"
+        )
+      else
+        update_code_signing_settings(
+          use_automatic_signing: true,
+          path: "Runner.xcodeproj",
+          team_id: ENV["FASTLANE_TEAM_ID"]
+        )
+      end
+    end
+
+    export_opts = {
+      method: "app-store"
+    }
+
+    if profile_uuid && !profile_uuid.empty?
+      export_opts[:provisioningProfiles] = {
+        "{{BUNDLE_ID}}" => profile_uuid
+      }
     end
 
     # Build the app with explicit build number override and allowProvisioningUpdates
     gym(
       scheme: "{{SCHEME}}",
       export_method: "app-store",
-      export_options: {
-        method: "app-store",
-        signingStyle: "automatic"
-      },
+      export_options: export_opts,
       clean: false,
       output_directory: "./build",
       output_name: "{{SCHEME}}.ipa",
-      xcargs: "-allowProvisioningUpdates DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']} CODE_SIGN_STYLE=Automatic ProvisioningStyle=Automatic CURRENT_PROJECT_VERSION=#{build_num} FLUTTER_BUILD_NUMBER=#{build_num}"
+      xcargs: "-allowProvisioningUpdates DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']} CURRENT_PROJECT_VERSION=#{build_num} FLUTTER_BUILD_NUMBER=#{build_num}"
     )
   end
 
