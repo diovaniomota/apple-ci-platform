@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -36,7 +37,19 @@ export async function POST(request) {
       return NextResponse.json({ message: `Ignored event '${event}'` }, { status: 200 });
     }
 
-    const payload = await request.json();
+    const rawBody = await request.text();
+
+    // Optional X-Hub-Signature-256 HMAC validation if WEBHOOK_SECRET is set
+    const signature = request.headers.get('x-hub-signature-256');
+    const secret = process.env.WEBHOOK_SECRET;
+    if (secret && signature) {
+      const expectedSig = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+      if (signature !== expectedSig) {
+        return NextResponse.json({ error: 'Assinatura X-Hub-Signature-256 inválida' }, { status: 401 });
+      }
+    }
+
+    const payload = JSON.parse(rawBody);
     const repoCloneUrl = payload?.repository?.clone_url || '';
     const repoHtmlUrl = payload?.repository?.html_url || '';
     const ref = payload?.ref || 'refs/heads/main';
