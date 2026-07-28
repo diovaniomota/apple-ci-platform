@@ -285,6 +285,58 @@ export default function BuildLiveLogs() {
     return parseLogsToSteps(build?.logs || '', build?.status, nowMs);
   }, [build?.logs, build?.status, nowMs]);
 
+  const performanceInsights = useMemo(() => {
+    let prepSec = 0;
+    let cacheSec = 0;
+    let buildSec = 0;
+    let uploadSec = 0;
+
+    steps.forEach(s => {
+      let durationSec = 0;
+      if (s.startMs && s.endMs) {
+        durationSec = Math.max(1, Math.round((s.endMs - s.startMs) / 1000));
+      } else if (s.startMs && s.status === 'RUNNING') {
+        durationSec = Math.max(1, Math.round((nowMs - s.startMs) / 1000));
+      }
+
+      if (s.id === 'clone' || s.id === 'sdks' || s.id === 'validate_signing' || s.id === 'init_keychain' || s.id === 'fastlane_config') {
+        prepSec += durationSec;
+      } else if (s.id === 'packages' || s.id === 'cocoapods') {
+        cacheSec += durationSec;
+      } else if (s.id === 'build_ios' || s.id === 'apply_profiles') {
+        buildSec += durationSec;
+      } else if (s.id === 'publishing') {
+        uploadSec += durationSec;
+      }
+    });
+
+    const totalSec = prepSec + cacheSec + buildSec + uploadSec;
+    if (totalSec === 0) {
+      return {
+        prepSec: 0, cacheSec: 0, buildSec: 0, uploadSec: 0,
+        prepPct: 0, cachePct: 0, buildPct: 0, uploadPct: 0,
+        totalSec: 0
+      };
+    }
+
+    const prepPct = Math.round((prepSec / totalSec) * 100);
+    const cachePct = Math.round((cacheSec / totalSec) * 100);
+    const buildPct = Math.round((buildSec / totalSec) * 100);
+    const uploadPct = Math.max(0, 100 - (prepPct + cachePct + buildPct));
+
+    return {
+      prepSec,
+      cacheSec,
+      buildSec,
+      uploadSec,
+      prepPct,
+      cachePct,
+      buildPct,
+      uploadPct,
+      totalSec
+    };
+  }, [steps, nowMs]);
+
   useEffect(() => {
     if (steps.length > 0) {
       setExpandedSteps(prev => {
@@ -559,10 +611,10 @@ export default function BuildLiveLogs() {
         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
           {/* Segmented Progress Bar */}
           <div style={{ width: '100%', height: '10px', background: '#e2e8f0', borderRadius: '5px', overflow: 'hidden', display: 'flex', marginBottom: '14px' }}>
-            <div style={{ width: '15%', height: '100%', background: '#3b82f6' }} title="Preparação (15%)" />
-            <div style={{ width: '20%', height: '100%', background: '#a855f7' }} title="Smart Cache & Pods (20%)" />
-            <div style={{ width: '50%', height: '100%', background: '#10b981' }} title="Compilação Xcode (50%)" />
-            <div style={{ width: '15%', height: '100%', background: '#eab308' }} title="Upload TestFlight (15%)" />
+            <div style={{ width: `${performanceInsights.prepPct}%`, height: '100%', background: '#3b82f6', transition: 'width 0.5s ease' }} title={`Preparação (${performanceInsights.prepPct}%)`} />
+            <div style={{ width: `${performanceInsights.cachePct}%`, height: '100%', background: '#a855f7', transition: 'width 0.5s ease' }} title={`Smart Cache & Pods (${performanceInsights.cachePct}%)`} />
+            <div style={{ width: `${performanceInsights.buildPct}%`, height: '100%', background: '#10b981', transition: 'width 0.5s ease' }} title={`Compilação Xcode (${performanceInsights.buildPct}%)`} />
+            <div style={{ width: `${performanceInsights.uploadPct}%`, height: '100%', background: '#eab308', transition: 'width 0.5s ease' }} title={`Upload TestFlight (${performanceInsights.uploadPct}%)`} />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem' }}>
@@ -570,28 +622,36 @@ export default function BuildLiveLogs() {
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#475569' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6' }} /> Preparação & Git
               </span>
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>~25s (10%)</span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                {performanceInsights.prepSec > 0 ? `${formatDurationMs(performanceInsights.prepSec * 1000)} (${performanceInsights.prepPct}%)` : 'Aguardando...'}
+              </span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#475569' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#a855f7' }} /> Smart Cache & Pods
               </span>
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>~45s (⚡ Economizado)</span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                {performanceInsights.cacheSec > 0 ? `${formatDurationMs(performanceInsights.cacheSec * 1000)} (${performanceInsights.cachePct}%)` : 'Aguardando...'}
+              </span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#475569' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} /> Xcode Build (`gym`)
               </span>
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>~2m 10s (60%)</span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                {performanceInsights.buildSec > 0 ? `${formatDurationMs(performanceInsights.buildSec * 1000)} (${performanceInsights.buildPct}%)` : 'Aguardando...'}
+              </span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#475569' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#eab308' }} /> Upload TestFlight (`pilot`)
               </span>
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>~1m 05s (25%)</span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                {performanceInsights.uploadSec > 0 ? `${formatDurationMs(performanceInsights.uploadSec * 1000)} (${performanceInsights.uploadPct}%)` : 'Aguardando...'}
+              </span>
             </div>
           </div>
         </div>
