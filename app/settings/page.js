@@ -17,6 +17,10 @@ function SettingField({ label, field, description, value, onChange, masked }) {
       <div style={{ position: 'relative' }}>
         <input
           type={masked && !show ? 'password' : 'text'}
+          // Impede o autofill do navegador de tratar estes campos como um
+          // formulário de login (email + senha salvos eram injetados aqui).
+          name={`cfg-${field}`}
+          autoComplete={masked ? 'new-password' : 'off'}
           value={value || ''}
           onChange={e => onChange(field, e.target.value)}
           style={{
