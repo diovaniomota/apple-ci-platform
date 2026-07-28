@@ -624,6 +624,12 @@ async function processBuilds() {
       if (fs.existsSync(pbxprojPath)) {
         let pbxprojContent = fs.readFileSync(pbxprojPath, 'utf8');
         pbxprojContent = pbxprojContent.replace(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*[^;]+;/g, `PRODUCT_BUNDLE_IDENTIFIER = ${build.project.bundleId};`);
+        if (teamId) {
+          pbxprojContent = pbxprojContent.replace(/DEVELOPMENT_TEAM\s*=\s*[^;]+;/g, `DEVELOPMENT_TEAM = ${teamId};`);
+          if (!pbxprojContent.includes('DEVELOPMENT_TEAM =')) {
+            pbxprojContent = pbxprojContent.replace(/(PRODUCT_BUNDLE_IDENTIFIER = [^;]+;)/g, `$1\n\t\t\t\tDEVELOPMENT_TEAM = ${teamId};`);
+          }
+        }
         fs.writeFileSync(pbxprojPath, pbxprojContent);
       }
       await endStep(build.id, 'Fetch signing files');

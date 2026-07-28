@@ -14,53 +14,47 @@ platform :ios do
       )
     end
 
-    # Code signing via Match
-    match(
-      type: "appstore",
-      app_identifier: "{{BUNDLE_ID}}",
-      git_url: "{{MATCH_GIT_URL}}",
-      readonly: false
-    )
-
-    # Auto-increment build number from TestFlight to prevent duplicate build errors
-    build_num = 1
-    begin
-      if ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"] && !ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"].empty?
-        latest_build = latest_testflight_build_number(
-          app_identifier: "{{BUNDLE_ID}}"
+    # Code signing via Match if git_url is provided
+    match_url = "{{MATCH_GIT_URL}}"
+    if match_url && !match_url.strip.empty?
+      begin
+        match(
+          type: "appstore",
+          app_identifier: "{{BUNDLE_ID}}",
+          git_url: match_url,
+          readonly: false
         )
-        if latest_build && latest_build.to_i > 0
-          build_num = latest_build.to_i + 1
-        end
+        update_code_signing_settings(
+          use_automatic_signing: false,
+          path: "Runner.xcodeproj",
+          team_id: ENV["FASTLANE_TEAM_ID"],
+          profile_name: "match AppStore {{BUNDLE_ID}}",
+          code_sign_identity: "Apple Distribution"
+        )
+      rescue => e
+        UI.important("Match signing failed: #{e.message}. Falling back to Automatic Signing.")
+        update_code_signing_settings(
+          use_automatic_signing: true,
+          path: "Runner.xcodeproj",
+          team_id: ENV["FASTLANE_TEAM_ID"]
+        )
       end
-    rescue => e
-      UI.important("Could not fetch latest TestFlight build number: #{e.message}")
-    end
-
-    UI.message("🚀 Auto-incrementing build number to: #{build_num}")
-
-    begin
-      increment_build_number(
-        build_number: build_num.to_s,
-        xcodeproj: "Runner.xcodeproj"
+    else
+      UI.message("ℹ️ No Match Git URL provided, using Automatic Signing with Team ID #{ENV['FASTLANE_TEAM_ID']}")
+      update_code_signing_settings(
+        use_automatic_signing: true,
+        path: "Runner.xcodeproj",
+        team_id: ENV["FASTLANE_TEAM_ID"]
       )
-    rescue => e
-      UI.important("increment_build_number warning: #{e.message}")
     end
 
-    # Update Xcode project signing settings directly for the Runner target
-    update_code_signing_settings(
-      use_automatic_signing: false,
-      path: "Runner.xcodeproj",
-      team_id: ENV["FASTLANE_TEAM_ID"],
-      profile_name: "match AppStore {{BUNDLE_ID}}",
-      code_sign_identity: "Apple Distribution"
-    )
-
-    # Build the app with explicit build number override
+    # Build the app with explicit build number override and allowProvisioningUpdates
     gym(
       scheme: "{{SCHEME}}",
       export_method: "app-store",
+      export_options: {
+        allowProvisioningUpdates: true
+      },
       clean: true,
       output_directory: "./build",
       output_name: "{{SCHEME}}.ipa",
