@@ -12,7 +12,10 @@ import {
   Ban,
   Settings,
   QrCode,
-  AlertTriangle
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  Circle
 } from 'lucide-react';
 
 /**
@@ -700,10 +703,16 @@ export default function BuildLiveLogs() {
                     borderRadius: isExpanded ? '4px 4px 0 0' : '4px'
                   }}
                 >
-                  {/* Step Title */}
+                  {/* Step Title & Spinner / Status Icon */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    {isRunning && (
-                      <Loader2 size={16} className="animate-spin" style={{ color: '#ffffff' }} />
+                    {isRunning ? (
+                      <Loader2 size={16} className="animate-spin" style={{ color: isExpanded ? '#ffffff' : '#0066ff', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+                    ) : isFailed ? (
+                      <XCircle size={16} style={{ color: '#ffffff', flexShrink: 0 }} />
+                    ) : step.status === 'SUCCESS' ? (
+                      <CheckCircle2 size={16} style={{ color: isExpanded ? '#ffffff' : '#059669', flexShrink: 0 }} />
+                    ) : (
+                      <Circle size={16} style={{ color: '#6b7280', flexShrink: 0 }} />
                     )}
                     <span style={{ fontWeight: 500, fontSize: '0.925rem', letterSpacing: '-0.01em' }}>
                       {step.name}
