@@ -40,7 +40,16 @@ platform :ios do
         )
       end
     else
-      UI.message("ℹ️ No Match Git URL provided, using Automatic Signing with Team ID #{ENV['FASTLANE_TEAM_ID']}")
+      UI.message("ℹ️ No Match Git URL provided, fetching App Store provisioning profile via App Store Connect API Key...")
+      begin
+        get_provisioning_profile(
+          app_identifier: "{{BUNDLE_ID}}",
+          type: "appstore",
+          force: false
+        )
+      rescue => e
+        UI.important("⚠️ Provisioning profile fetch warning: #{e.message}")
+      end
       update_code_signing_settings(
         use_automatic_signing: true,
         path: "Runner.xcodeproj",
