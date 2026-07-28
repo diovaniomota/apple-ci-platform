@@ -347,18 +347,28 @@ function getMachineSpecs() {
   }
 }
 
+const logQueues = new Map();
+
 async function appendLog(buildId, text) {
-  try {
-    const build = await prisma.build.findUnique({ where: { id: buildId } });
-    if (build) {
-      await prisma.build.update({
-        where: { id: buildId },
-        data: { logs: (build.logs || '') + text }
-      });
+  // stdout/stderr handlers fire concurrently, so a read-modify-write here loses
+  // chunks whenever two arrive at once (which is exactly when a build is failing
+  // and the output comes in a burst). Append atomically in SQL, and chain the
+  // writes per build so the chunks keep their original order.
+  const previous = logQueues.get(buildId) || Promise.resolve();
+  const next = previous.then(async () => {
+    try {
+      await prisma.$executeRaw`UPDATE "Build" SET logs = COALESCE(logs, '') || ${text}, "updatedAt" = NOW() WHERE id = ${buildId}`;
+    } catch (e) {
+      console.error(`Failed to append log for build ${buildId}:`, e.message);
     }
-  } catch (e) {
-    console.error(`Failed to append log for build ${buildId}:`, e.message);
-  }
+  });
+
+  logQueues.set(buildId, next);
+  next.finally(() => {
+    if (logQueues.get(buildId) === next) logQueues.delete(buildId);
+  });
+
+  return next;
 }
 
 async function startStep(buildId, stepName) {
