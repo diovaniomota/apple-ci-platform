@@ -4,6 +4,7 @@ platform :ios do
   desc "Build iOS app (.ipa) only"
   lane :build_app do
     setup_ci
+    build_num = ENV["BUILD_NUMBER"] || "1"
 
     if ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"] && !ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"].empty?
       app_store_connect_api_key(
@@ -63,13 +64,12 @@ platform :ios do
       export_method: "app-store",
       export_options: {
         method: "app-store",
-        signingStyle: "automatic",
-        allowProvisioningUpdates: true
+        signingStyle: "automatic"
       },
-      clean: true,
+      clean: false,
       output_directory: "./build",
       output_name: "{{SCHEME}}.ipa",
-      xcargs: "-allowProvisioningUpdates DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']} CURRENT_PROJECT_VERSION=#{build_num} FLUTTER_BUILD_NUMBER=#{build_num}"
+      xcargs: "-allowProvisioningUpdates DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']} CODE_SIGN_STYLE=Automatic ProvisioningStyle=Automatic CURRENT_PROJECT_VERSION=#{build_num} FLUTTER_BUILD_NUMBER=#{build_num}"
     )
   end
 
