@@ -1,16 +1,32 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, Mail, Eye, EyeOff, Shield, ArrowRight, AlertCircle } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, Shield, ArrowRight, AlertCircle, CheckSquare, Square } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Auto-fill saved credentials from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedEmail = localStorage.getItem('apple_ci_saved_email');
+      const savedPass = localStorage.getItem('apple_ci_saved_password');
+      const savedRemember = localStorage.getItem('apple_ci_remember_me');
+
+      if (savedEmail) setEmail(savedEmail);
+      if (savedPass) setPassword(savedPass);
+      if (savedRemember !== null) setRememberMe(savedRemember === 'true');
+    } catch (e) {
+      console.warn('Could not load saved login credentials:', e);
+    }
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -27,6 +43,17 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
+        // Save or clear credentials based on rememberMe
+        if (rememberMe) {
+          localStorage.setItem('apple_ci_saved_email', email);
+          localStorage.setItem('apple_ci_saved_password', password);
+          localStorage.setItem('apple_ci_remember_me', 'true');
+        } else {
+          localStorage.removeItem('apple_ci_saved_email');
+          localStorage.removeItem('apple_ci_saved_password');
+          localStorage.setItem('apple_ci_remember_me', 'false');
+        }
+
         router.push('/');
         router.refresh();
       } else {
@@ -127,6 +154,7 @@ export default function LoginPage() {
               <input
                 type="email"
                 required
+                autoComplete="username"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="seu.email@empresa.com"
@@ -155,6 +183,7 @@ export default function LoginPage() {
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -179,6 +208,28 @@ export default function LoginPage() {
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
+          </div>
+
+          {/* Remember Me Checkbox */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '-4px' }}>
+            <button
+              type="button"
+              onClick={() => setRememberMe(!rememberMe)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#cbd5e1',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: 0
+              }}
+            >
+              {rememberMe ? <CheckSquare size={18} color="#0066ff" /> : <Square size={18} color="#64748b" />}
+              <span>Lembrar minhas credenciais</span>
+            </button>
           </div>
 
           {/* Submit Button */}
