@@ -131,6 +131,7 @@ platform :ios do
       # (com API key + allowProvisioningUpdates ele pode usar cloud signing,
       # que não depende de chave privada Distribution local).
       export_opts[:signingStyle] = "automatic"
+      export_opts[:teamID] = resolved_team if resolved_team && !resolved_team.empty?
     end
 
     # Autenticação do próprio xcodebuild via App Store Connect API key: sem
@@ -151,7 +152,7 @@ platform :ios do
     xcargs_parts << "DEVELOPMENT_TEAM=#{resolved_team}" if resolved_team && !resolved_team.empty?
     xcargs_parts << auth_flags unless auth_flags.empty?
 
-    gym(
+    gym_opts = {
       scheme: "{{SCHEME}}",
       export_method: "app-store",
       export_options: export_opts,
@@ -162,7 +163,17 @@ platform :ios do
       # O export (-exportArchive) é um comando separado: também precisa de
       # allowProvisioningUpdates + API key para assinar automaticamente.
       export_xcargs: "-allowProvisioningUpdates #{auth_flags}".strip
-    )
+    }
+
+    if profile_uuid.nil? || profile_uuid.empty?
+      # Sem identidade Distribution local E sem devices no time (profile de
+      # Development impossível): arquiva sem assinar e deixa o export assinar
+      # tudo via cloud signing com a API key.
+      UI.important("⚠️ No local signing path available - archiving unsigned and signing at export (cloud signing).")
+      gym_opts[:skip_codesigning] = true
+    end
+
+    gym(**gym_opts)
   end
 
   desc "Upload built .ipa to TestFlight"
