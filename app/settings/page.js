@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Save, Key, GitBranch, Upload, Eye, EyeOff, CheckCircle, AlertCircle, Plus, Trash2, ShieldCheck, UserCheck, Users, Lock, Shield } from 'lucide-react';
+import { Save, Key, GitBranch, Upload, Eye, EyeOff, CheckCircle, AlertCircle, Plus, Trash2, ShieldCheck, UserCheck, Users, Lock, Shield, Edit3 } from 'lucide-react';
 
 function SettingField({ label, field, description, value, onChange, masked }) {
   const [show, setShow] = useState(false);
@@ -102,6 +102,7 @@ export default function SettingsPage() {
 
   // Apple Account Modal State
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingAccId, setEditingAccId] = useState(null);
   const [newAcc, setNewAcc] = useState({
     name: '', appleId: '', teamId: '', ascKeyId: '', ascIssuerId: '', ascKeyContent: '', matchGitUrl: '', matchPassword: ''
   });
@@ -237,6 +238,27 @@ export default function SettingsPage() {
     }
   };
 
+  const handleOpenAddAppleModal = () => {
+    setEditingAccId(null);
+    setNewAcc({ name: '', appleId: '', teamId: '', ascKeyId: '', ascIssuerId: '', ascKeyContent: '', matchGitUrl: '', matchPassword: '' });
+    setShowAddModal(true);
+  };
+
+  const handleOpenEditAppleModal = (acc) => {
+    setEditingAccId(acc.id);
+    setNewAcc({
+      name: acc.name || '',
+      appleId: acc.appleId || '',
+      teamId: acc.teamId || '',
+      ascKeyId: acc.ascKeyId || '',
+      ascIssuerId: acc.ascIssuerId || '',
+      ascKeyContent: acc.ascKeyContent || '',
+      matchGitUrl: acc.matchGitUrl || '',
+      matchPassword: acc.matchPassword || ''
+    });
+    setShowAddModal(true);
+  };
+
   const handleAddAppleAccount = async (e) => {
     e.preventDefault();
     if (!newAcc.name || !newAcc.teamId) {
@@ -245,13 +267,17 @@ export default function SettingsPage() {
     }
     setAddingAcc(true);
     try {
-      const res = await fetch('/api/apple-accounts', {
-        method: 'POST',
+      const url = editingAccId ? `/api/apple-accounts/${editingAccId}` : '/api/apple-accounts';
+      const method = editingAccId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newAcc)
       });
       if (res.ok) {
         setShowAddModal(false);
+        setEditingAccId(null);
         setNewAcc({ name: '', appleId: '', teamId: '', ascKeyId: '', ascIssuerId: '', ascKeyContent: '', matchGitUrl: '', matchPassword: '' });
         fetchAppleAccounts();
       } else {
@@ -259,7 +285,7 @@ export default function SettingsPage() {
         alert(`Erro ao salvar conta: ${err.error || 'Erro desconhecido'}`);
       }
     } catch (err) {
-      alert('Falha de conexão ao criar conta.');
+      alert('Falha de conexão ao salvar conta.');
     } finally {
       setAddingAcc(false);
     }
@@ -469,7 +495,7 @@ export default function SettingsPage() {
         actionButton={
           <button
             className="btn-primary"
-            onClick={() => setShowAddModal(true)}
+            onClick={handleOpenAddAppleModal}
             style={{ padding: '8px 16px', fontSize: '0.875rem', gap: '6px', background: '#0066ff' }}
           >
             <Plus size={16} /> Nova Conta Apple
@@ -513,25 +539,34 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
-                <button
-                  onClick={() => handleDeleteAppleAccount(acc.id, acc.name)}
-                  style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', borderRadius: '8px', padding: '8px', cursor: 'pointer' }}
-                  title="Excluir Conta"
-                >
-                  <Trash2 size={16} />
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => handleOpenEditAppleModal(acc)}
+                    style={{ background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#60a5fa', borderRadius: '8px', padding: '8px', cursor: 'pointer' }}
+                    title="Editar Conta Apple"
+                  >
+                    <Edit3 size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteAppleAccount(acc.id, acc.name)}
+                    style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', borderRadius: '8px', padding: '8px', cursor: 'pointer' }}
+                    title="Excluir Conta"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </SectionCard>
 
-      {/* ADD APPLE ACCOUNT MODAL / FORM */}
+      {/* ADD/EDIT APPLE ACCOUNT MODAL / FORM */}
       {showAddModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto', color: '#f8fafc' }}>
             <h2 style={{ fontSize: '1.3rem', fontWeight: '700', marginBottom: '8px' }}>
-              Cadastrar Nova Conta Apple Developer
+              {editingAccId ? 'Editar Conta Apple Developer' : 'Cadastrar Nova Conta Apple Developer'}
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '24px' }}>
               Preencha os dados da conta da Apple (Team ID e credenciais da API do App Store Connect).
@@ -548,11 +583,11 @@ export default function SettingsPage() {
               <SettingField label="Fastlane Match Password" field="matchPassword" value={newAcc.matchPassword} onChange={(f, v) => setNewAcc({ ...newAcc, matchPassword: v })} masked />
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '28px' }}>
-                <button type="button" onClick={() => setShowAddModal(false)} className="btn-secondary" style={{ padding: '10px 20px', background: 'transparent', border: '1px solid var(--border)', color: '#94a3b8', borderRadius: '8px', cursor: 'pointer' }}>
+                <button type="button" onClick={() => { setShowAddModal(false); setEditingAccId(null); }} className="btn-secondary" style={{ padding: '10px 20px', background: 'transparent', border: '1px solid var(--border)', color: '#94a3b8', borderRadius: '8px', cursor: 'pointer' }}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn-primary" disabled={addingAcc} style={{ padding: '10px 24px', borderRadius: '8px' }}>
-                  {addingAcc ? 'Salvando...' : 'Salvar Conta Apple'}
+                  {addingAcc ? 'Salvando...' : editingAccId ? 'Atualizar Conta Apple' : 'Salvar Conta Apple'}
                 </button>
               </div>
             </form>
