@@ -53,6 +53,8 @@ platform :ios do
       scheme: "{{SCHEME}}",
       export_method: "app-store",
       export_options: {
+        method: "app-store",
+        signingStyle: "automatic",
         allowProvisioningUpdates: true
       },
       clean: true,
