@@ -27,6 +27,8 @@ platform :ios do
           git_url: match_url,
           readonly: false
         )
+        profile_uuid = ENV["SIGH_UUID"]
+        profile_name = ENV["SIGH_NAME"]
         update_code_signing_settings(
           use_automatic_signing: false,
           path: "Runner.xcodeproj",

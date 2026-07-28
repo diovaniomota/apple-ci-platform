@@ -448,8 +448,31 @@ async function processBuilds() {
   isProcessingBuilds = true;
 
   try {
-    const build = await prisma.build.findFirst({
+    const candidate = await prisma.build.findFirst({
       where: { status: 'PENDING' },
+      select: { id: true }
+    });
+
+    if (!candidate) return;
+
+    const detectedMachine = getMachineSpecs();
+
+    // Atomic claim: only proceed if this process is the one that flips PENDING -> RUNNING.
+    // Prevents two runner instances (e.g. a stale process left over from a restart)
+    // from picking up and building the same job concurrently.
+    const claim = await prisma.build.updateMany({
+      where: { id: candidate.id, status: 'PENDING' },
+      data: {
+        status: 'RUNNING',
+        logs: '',
+        machine: detectedMachine
+      }
+    });
+
+    if (claim.count === 0) return;
+
+    const build = await prisma.build.findUnique({
+      where: { id: candidate.id },
       include: {
         project: {
           include: { appleAccount: true }
@@ -457,20 +480,8 @@ async function processBuilds() {
       }
     });
 
-    if (!build) return;
-
     clearFlutterLock();
-    const detectedMachine = getMachineSpecs();
     console.log(`\n▶ Processing build: ${build.id} on ${detectedMachine}`);
-
-    await prisma.build.update({
-      where: { id: build.id },
-      data: {
-        status: 'RUNNING',
-        logs: '',
-        machine: detectedMachine
-      }
-    });
 
     updateRunnerHeartbeat('BUILDING', build.id);
 
