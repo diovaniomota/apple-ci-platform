@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Loader2,
@@ -261,6 +261,32 @@ export default function BuildLiveLogs() {
     };
   }, [id]);
 
+  const router = useRouter();
+  const [startingNewBuild, setStartingNewBuild] = useState(false);
+
+  const handleStartNewBuild = async () => {
+    if (!build?.projectId || startingNewBuild) return;
+    setStartingNewBuild(true);
+    try {
+      const res = await fetch('/api/builds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: build.projectId })
+      });
+      if (res.ok) {
+        const newBuild = await res.json();
+        router.push(`/builds/${newBuild.id}`);
+      } else {
+        alert('Falha ao iniciar novo build.');
+      }
+    } catch (e) {
+      console.error('Erro ao iniciar build:', e);
+      alert('Erro de conexão ao iniciar novo build.');
+    } finally {
+      setStartingNewBuild(false);
+    }
+  };
+
   const handleCancelBuild = async () => {
     if (!confirm('Deseja realmente cancelar este build?')) return;
     setCancelling(true);
@@ -468,8 +494,9 @@ export default function BuildLiveLogs() {
           >
             <Settings size={18} />
           </Link>
-          <Link
-            href={build.projectId ? `/projects/${build.projectId}` : '/'}
+          <button
+            onClick={handleStartNewBuild}
+            disabled={startingNewBuild}
             style={{
               flex: 1,
               height: '38px',
@@ -482,13 +509,18 @@ export default function BuildLiveLogs() {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '6px',
-              textDecoration: 'none',
+              border: 'none',
+              cursor: startingNewBuild ? 'not-allowed' : 'pointer',
               boxShadow: '0 1px 3px rgba(0, 102, 255, 0.3)'
             }}
           >
-            <span>Start new build</span>
-            <span style={{ fontSize: '1rem' }}>→</span>
-          </Link>
+            <span>{startingNewBuild ? 'Iniciando build...' : 'Start new build'}</span>
+            {startingNewBuild ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <span style={{ fontSize: '1rem' }}>→</span>
+            )}
+          </button>
         </div>
 
         {/* Cancel Build Option if Running */}
