@@ -641,7 +641,8 @@ async function processBuilds() {
           .replace(/CODE_SIGN_STYLE\s*=\s*[^;]+;/gi, 'CODE_SIGN_STYLE = Automatic;')
           .replace(/ProvisioningStyle\s*=\s*[^;]+;/gi, 'ProvisioningStyle = Automatic;')
           .replace(/PROVISIONING_PROFILE\s*=\s*[^;]+;/g, '')
-          .replace(/PROVISIONING_PROFILE_SPECIFIER\s*=\s*[^;]+;/g, '');
+          .replace(/PROVISIONING_PROFILE_SPECIFIER\s*=\s*[^;]+;/g, '')
+          .replace(/"?CODE_SIGN_IDENTITY(\[sdk=[^\]]*\])?"?\s*=\s*[^;]+;/g, 'CODE_SIGN_IDENTITY = "Apple Distribution";');
         if (teamId) {
           pbxprojContent = pbxprojContent.replace(/DEVELOPMENT_TEAM\s*=\s*[^;]+;/g, `DEVELOPMENT_TEAM = ${teamId};`);
           if (!pbxprojContent.includes('DEVELOPMENT_TEAM =')) {
