@@ -628,11 +628,13 @@ async function processBuilds() {
         pbxprojContent = pbxprojContent
           .replace(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*[^;]+;/g, `PRODUCT_BUNDLE_IDENTIFIER = ${build.project.bundleId};`)
           .replace(/CODE_SIGN_STYLE\s*=\s*[^;]+;/gi, 'CODE_SIGN_STYLE = Automatic;')
-          .replace(/ProvisioningStyle\s*=\s*[^;]+;/gi, 'ProvisioningStyle = Automatic;');
+          .replace(/ProvisioningStyle\s*=\s*[^;]+;/gi, 'ProvisioningStyle = Automatic;')
+          .replace(/PROVISIONING_PROFILE\s*=\s*[^;]+;/g, '')
+          .replace(/PROVISIONING_PROFILE_SPECIFIER\s*=\s*[^;]+;/g, '');
         if (teamId) {
           pbxprojContent = pbxprojContent.replace(/DEVELOPMENT_TEAM\s*=\s*[^;]+;/g, `DEVELOPMENT_TEAM = ${teamId};`);
           if (!pbxprojContent.includes('DEVELOPMENT_TEAM =')) {
-            pbxprojContent = pbxprojContent.replace(/(PRODUCT_BUNDLE_IDENTIFIER = [^;]+;)/g, `$1\n\t\t\t\tDEVELOPMENT_TEAM = ${teamId};`);
+            pbxprojContent = pbxprojContent.replace(/(PRODUCT_BUNDLE_IDENTIFIER = [^;]+;)/g, `$1\n\t\t\t\tDEVELOPMENT_TEAM = ${teamId};\n\t\t\t\tCODE_SIGN_STYLE = Automatic;\n\t\t\t\tProvisioningStyle = Automatic;`);
           }
         }
         fs.writeFileSync(pbxprojPath, pbxprojContent);
