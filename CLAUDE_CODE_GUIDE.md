@@ -36,15 +36,29 @@ O sistema foi desenhado para substituir serviços pagos como o Codemagic, oferec
 
 ---
 
-## 💻 3. Credenciais & Acesso ao Mac Mini Runner
+## 💻 3. Credenciais & Acesso SSH ao Mac Mini Runner
 
+- **Comando de Conexão SSH Direta:**  
+  ```bash
+  ssh diovaniomota@100.70.144.46
+  ```
 - **Host (IP Tailscale):** `100.70.144.46`
 - **Usuário SSH:** `diovaniomota`
 - **Senha SSH:** `8588`
 - **Diretório do Projeto no Mac:** `/Users/diovaniomota/Documents/apple-ci-platform`
 - **Daemon de Execução (LaunchAgent):** `~/Library/LaunchAgents/com.dartsoft.apple-ci-worker.plist`
-- **Status do Daemon no Mac:** `launchctl list | grep apple-ci`
-- **Script de Diagnóstico Rápido:** `~/Scripts/apple-ci-status.sh`
+- **Verificar Status do Worker no Mac:**  
+  ```bash
+  launchctl list | grep apple-ci
+  ```
+- **Reiniciar Daemon do Worker no Mac:**  
+  ```bash
+  launchctl stop com.dartsoft.apple-ci-worker && launchctl start com.dartsoft.apple-ci-worker
+  ```
+- **Script de Diagnóstico Rápido no Mac:**  
+  ```bash
+  ~/Scripts/apple-ci-status.sh
+  ```
 
 ---
 
