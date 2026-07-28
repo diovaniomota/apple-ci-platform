@@ -695,7 +695,7 @@ async function processBuilds() {
       // STEP 10: Build iOS
       await startStep(build.id, 'Build iOS');
       await appendLog(build.id, `🔨 Building with Xcode...\n`);
-      await runCommand('fastlane', ['build_app'], iosDir, build.id, fastlaneEnv);
+      await runCommand('fastlane', ['ci_build'], iosDir, build.id, fastlaneEnv);
       await endStep(build.id, 'Build iOS');
 
       // Immediate Artifact Collection (.ipa, .app.zip, .dSYM.zip) right after Build iOS succeeds
@@ -778,7 +778,7 @@ async function processBuilds() {
       await startStep(build.id, 'Publishing');
       await appendLog(build.id, `🚀 Uploading binary to TestFlight via App Store Connect API...\n`);
       try {
-        await runCommand('fastlane', ['upload_app'], iosDir, build.id, fastlaneEnv);
+        await runCommand('fastlane', ['ci_upload'], iosDir, build.id, fastlaneEnv);
         await appendLog(build.id, `✅ Uploaded to TestFlight successfully.\n`);
       } catch (pubErr) {
         await appendLog(build.id, `⚠️ TestFlight upload failed: ${pubErr.message}\n`);
