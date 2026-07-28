@@ -624,6 +624,8 @@ async function processBuilds() {
       if (fs.existsSync(pbxprojPath)) {
         let pbxprojContent = fs.readFileSync(pbxprojPath, 'utf8');
         pbxprojContent = pbxprojContent.replace(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*[^;]+;/g, `PRODUCT_BUNDLE_IDENTIFIER = ${build.project.bundleId};`);
+        pbxprojContent = pbxprojContent.replace(/CODE_SIGN_STYLE\s*=\s*Manual;/g, 'CODE_SIGN_STYLE = Automatic;');
+        pbxprojContent = pbxprojContent.replace(/ProvisioningStyle\s*=\s*Manual;/g, 'ProvisioningStyle = Automatic;');
         if (teamId) {
           pbxprojContent = pbxprojContent.replace(/DEVELOPMENT_TEAM\s*=\s*[^;]+;/g, `DEVELOPMENT_TEAM = ${teamId};`);
           if (!pbxprojContent.includes('DEVELOPMENT_TEAM =')) {
