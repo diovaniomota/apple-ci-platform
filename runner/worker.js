@@ -347,28 +347,47 @@ function getMachineSpecs() {
   }
 }
 
-const logQueues = new Map();
+// stdout/stderr chegam em rajadas e o Postgres (Supabase us-west-2) tem ~200ms
+// de RTT por query. Bufferiza os chunks por build e faz no máximo ~1 append
+// atômico por segundo, encadeado para preservar a ordem. O append em SQL
+// (logs = logs || chunk) elimina o read-modify-write que perdia trechos do log.
+const logBuffers = new Map();
+const LOG_FLUSH_MS = 1000;
 
-async function appendLog(buildId, text) {
-  // stdout/stderr handlers fire concurrently, so a read-modify-write here loses
-  // chunks whenever two arrive at once (which is exactly when a build is failing
-  // and the output comes in a burst). Append atomically in SQL, and chain the
-  // writes per build so the chunks keep their original order.
-  const previous = logQueues.get(buildId) || Promise.resolve();
-  const next = previous.then(async () => {
+function appendLog(buildId, text) {
+  let buf = logBuffers.get(buildId);
+  if (!buf) {
+    buf = { pending: '', timer: null, chain: Promise.resolve() };
+    logBuffers.set(buildId, buf);
+  }
+  buf.pending += text;
+  if (!buf.timer) {
+    buf.timer = setTimeout(() => {
+      buf.timer = null;
+      flushLog(buildId);
+    }, LOG_FLUSH_MS);
+  }
+  return buf.chain;
+}
+
+function flushLog(buildId) {
+  const buf = logBuffers.get(buildId);
+  if (!buf) return Promise.resolve();
+  if (buf.timer) {
+    clearTimeout(buf.timer);
+    buf.timer = null;
+  }
+  if (!buf.pending) return buf.chain;
+  const text = buf.pending;
+  buf.pending = '';
+  buf.chain = buf.chain.then(async () => {
     try {
       await prisma.$executeRaw`UPDATE "Build" SET logs = COALESCE(logs, '') || ${text}, "updatedAt" = NOW() WHERE id = ${buildId}`;
     } catch (e) {
       console.error(`Failed to append log for build ${buildId}:`, e.message);
     }
   });
-
-  logQueues.set(buildId, next);
-  next.finally(() => {
-    if (logQueues.get(buildId) === next) logQueues.delete(buildId);
-  });
-
-  return next;
+  return buf.chain;
 }
 
 async function startStep(buildId, stepName) {
@@ -512,7 +531,9 @@ async function processBuilds() {
       const matchPass = acc?.matchPassword || settings.MATCH_PASSWORD;
       const keyId = acc?.ascKeyId || settings.ASC_KEY_ID;
       const issuerId = acc?.ascIssuerId || settings.ASC_ISSUER_ID;
-      const matchUrl = acc?.matchGitUrl || settings.MATCH_GIT_URL;
+      // Match repo é por conta: uma conta sem repo próprio NÃO herda o global,
+      // que pode conter certificados de outro time e faz o match falhar sempre.
+      const matchUrl = acc ? acc.matchGitUrl : settings.MATCH_GIT_URL;
       const keyContent = acc?.ascKeyContent || settings.ASC_KEY_CONTENT;
 
       if (acc) {
@@ -639,7 +660,7 @@ async function processBuilds() {
       fastfileContent = fastfileContent
         .replaceAll('{{SCHEME}}', build.project.buildScheme || 'Runner')
         .replaceAll('{{BUNDLE_ID}}', build.project.bundleId)
-        .replaceAll('{{MATCH_GIT_URL}}', settings.MATCH_GIT_URL || '');
+        .replaceAll('{{MATCH_GIT_URL}}', matchUrl || '');
 
       fs.writeFileSync(path.join(fastlaneDir, 'Fastfile'), fastfileContent);
 
@@ -805,9 +826,18 @@ async function processBuilds() {
       // STEP 12: Cleaning up
       await startStep(build.id, 'Cleaning up');
       await appendLog(build.id, `Cleaning build workspace and finalizing build artifacts...\n`);
+      // Poda automática: cada gym deixa um .xcarchive (centenas de MB) e um
+      // DerivedData por clone; workspaces órfãos sobram de builds que crasharam.
+      try {
+        execSync(`find "${WORKSPACE_DIR}" -maxdepth 1 -mindepth 1 -mmin +720 -exec rm -rf {} + 2>/dev/null || true`);
+        execSync(`find "$HOME/Library/Developer/Xcode/Archives" -maxdepth 1 -mindepth 1 -mtime +2 -exec rm -rf {} + 2>/dev/null || true`);
+        execSync(`find "$HOME/Library/Developer/Xcode/DerivedData" -maxdepth 1 -name "Runner-*" -mtime +5 -exec rm -rf {} + 2>/dev/null || true`);
+        await appendLog(build.id, `🧹 Pruned stale workspaces, Xcode archives and DerivedData.\n`);
+      } catch (e) {}
       await endStep(build.id, 'Cleaning up');
 
       await appendLog(build.id, `\n✅ Build completed successfully!\n`);
+      await flushLog(build.id);
       await prisma.build.update({ where: { id: build.id }, data: { status: 'SUCCESS' } });
       console.log(`✅ Build ${build.id} succeeded`);
 
@@ -815,14 +845,23 @@ async function processBuilds() {
       if (err.message === 'Build cancelado pelo usuário') {
         console.log(`🛑 Build ${build.id} was cancelled by user`);
         await appendLog(build.id, `\n🛑 Build cancelado pelo usuário.\n`);
+        await flushLog(build.id);
         await prisma.build.update({ where: { id: build.id }, data: { status: 'CANCELLED' } });
       } else {
         console.error(`❌ Build ${build.id} failed:`, err.message);
         await appendLog(build.id, `\n❌ Build failed: ${err.message}\n`);
+        await flushLog(build.id);
         await prisma.build.update({ where: { id: build.id }, data: { status: 'FAILED' } });
       }
     } finally {
       updateRunnerHeartbeat('ONLINE', null);
+      // Garante que qualquer resto de log bufferizado chegue ao banco
+      try { await flushLog(build.id); } catch (e) {}
+      logBuffers.delete(build.id);
+      // A chave .p8 é sensível - nunca deixar acumulada no workspace
+      try {
+        fs.rmSync(path.join(WORKSPACE_DIR, `AuthKey_${build.id}.p8`), { force: true });
+      } catch (e) {}
       try {
         fs.rmSync(projectDir, { recursive: true, force: true });
       } catch (e) {}

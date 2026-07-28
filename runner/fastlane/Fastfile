@@ -20,6 +20,8 @@ platform :ios do
 
     profile_uuid = nil
     profile_name = nil
+    # Team ID configurado; pode ser sobrescrito pelo time real do profile baixado
+    resolved_team = ENV["FASTLANE_TEAM_ID"]
     match_url = "{{MATCH_GIT_URL}}"
 
     if match_url && (match_url.start_with?("http") || match_url.start_with?("git@"))
@@ -30,22 +32,35 @@ platform :ios do
           git_url: match_url,
           readonly: false
         )
-        profile_uuid = ENV["SIGH_UUID"]
-        profile_name = ENV["SIGH_NAME"]
+        # match popula "sigh_<bundle>_<type>" (não SIGH_UUID, que é do sigh)
+        profile_uuid = ENV["sigh_{{BUNDLE_ID}}_appstore"]
+        profile_name = ENV["sigh_{{BUNDLE_ID}}_appstore_profile-name"]
+        match_team = ENV["sigh_{{BUNDLE_ID}}_appstore_team-id"]
+        resolved_team = match_team if match_team && !match_team.empty?
         update_code_signing_settings(
           use_automatic_signing: false,
           path: "Runner.xcodeproj",
-          team_id: ENV["FASTLANE_TEAM_ID"],
+          team_id: resolved_team,
           profile_name: "match AppStore {{BUNDLE_ID}}",
           code_sign_identity: "Apple Distribution"
         )
       rescue => e
         UI.important("Match signing failed: #{e.message}. Falling back to API Key Provisioning Profile.")
+        profile_uuid = nil
       end
     end
 
     if !profile_uuid
       UI.message("ℹ️ Fetching App Store provisioning profile via App Store Connect API Key...")
+
+      # sigh só baixa o profile - quem assina é o certificado. Garante que um
+      # Apple Distribution cert + chave privada exista no keychain local antes.
+      begin
+        get_certificates(generate_apple_certs: true)
+      rescue => e
+        UI.important("⚠️ Distribution certificate check failed: #{e.message}")
+      end
+
       begin
         # sigh has no `type` option: App Store is the default, and the other
         # kinds are selected with the adhoc/development/developer_id flags.
@@ -61,20 +76,43 @@ platform :ios do
       end
 
       if profile_uuid && !profile_uuid.empty?
+        # Extrai o Team ID real do profile baixado. Protege contra Team ID
+        # configurado errado no painel (ex.: provider ID numérico do ASC no
+        # lugar do Team ID do Developer Portal).
+        profile_path = File.expand_path("~/Library/MobileDevice/Provisioning Profiles/#{profile_uuid}.mobileprovision")
+        if File.exist?(profile_path)
+          begin
+            team_from_profile = sh("security cms -D -i '#{profile_path}' | plutil -extract 'TeamIdentifier.0' raw -o - -", log: false).strip
+            if team_from_profile =~ /\A[A-Z0-9]{10}\z/ && team_from_profile != resolved_team
+              UI.important("⚠️ Configured Team ID (#{resolved_team}) differs from profile team (#{team_from_profile}); using the profile's.")
+              resolved_team = team_from_profile
+            end
+          rescue => e
+            UI.important("⚠️ Could not read team from profile: #{e.message}")
+          end
+        end
+
         update_code_signing_settings(
           use_automatic_signing: false,
           path: "Runner.xcodeproj",
-          team_id: ENV["FASTLANE_TEAM_ID"],
+          team_id: resolved_team,
           profile_name: profile_uuid,
           code_sign_identity: "Apple Distribution"
         )
       else
+        # Último recurso: assinatura automática precisa de um cert Apple
+        # Development no keychain para arquivar.
+        begin
+          get_certificates(development: true, generate_apple_certs: true)
+        rescue => e
+          UI.important("⚠️ Development certificate check failed: #{e.message}")
+        end
         # Automatic signing picks its own identity. Forcing "Apple Distribution"
         # here makes Xcode fail with "conflicting provisioning settings".
         update_code_signing_settings(
           use_automatic_signing: true,
           path: "Runner.xcodeproj",
-          team_id: ENV["FASTLANE_TEAM_ID"]
+          team_id: resolved_team
         )
       end
     end
@@ -92,6 +130,11 @@ platform :ios do
     # Build the app with explicit build number override.
     # NOTE: gym has no `allow_provisioning_updates` option - the flag is passed
     # straight to xcodebuild through xcargs below.
+    xcargs_parts = ["-allowProvisioningUpdates", "CURRENT_PROJECT_VERSION=#{build_num}", "FLUTTER_BUILD_NUMBER=#{build_num}"]
+    # DEVELOPMENT_TEAM vazio na linha de comando sobrescreveria o projeto com
+    # string vazia - só passa quando existe um valor real.
+    xcargs_parts << "DEVELOPMENT_TEAM=#{resolved_team}" if resolved_team && !resolved_team.empty?
+
     gym(
       scheme: "{{SCHEME}}",
       export_method: "app-store",
@@ -99,7 +142,7 @@ platform :ios do
       clean: false,
       output_directory: "./build",
       output_name: "{{SCHEME}}.ipa",
-      xcargs: "-allowProvisioningUpdates DEVELOPMENT_TEAM=#{ENV['FASTLANE_TEAM_ID']} CURRENT_PROJECT_VERSION=#{build_num} FLUTTER_BUILD_NUMBER=#{build_num}"
+      xcargs: xcargs_parts.join(" ")
     )
   end
 
