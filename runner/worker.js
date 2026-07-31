@@ -657,9 +657,11 @@ async function processBuilds() {
 
       const templatePath = path.join(__dirname, 'fastlane', 'Fastfile');
       let fastfileContent = fs.readFileSync(templatePath, 'utf8');
+      const isDevBuild = build.project.distribution === 'development';
       fastfileContent = fastfileContent
         .replaceAll('{{SCHEME}}', build.project.buildScheme || 'Runner')
         .replaceAll('{{BUNDLE_ID}}', build.project.bundleId)
+        .replaceAll('{{EXPORT_METHOD}}', isDevBuild ? 'development' : 'app-store')
         .replaceAll('{{MATCH_GIT_URL}}', matchUrl || '');
 
       fs.writeFileSync(path.join(fastlaneDir, 'Fastfile'), fastfileContent);
@@ -811,13 +813,17 @@ async function processBuilds() {
 
       // STEP 11: Publishing (Upload to TestFlight)
       await startStep(build.id, 'Publishing');
-      await appendLog(build.id, `🚀 Uploading binary to TestFlight via App Store Connect API...\n`);
-      try {
-        await runCommand('fastlane', ['ci_upload'], iosDir, build.id, fastlaneEnv);
-        await appendLog(build.id, `✅ Uploaded to TestFlight successfully.\n`);
-      } catch (pubErr) {
-        await appendLog(build.id, `⚠️ TestFlight upload failed: ${pubErr.message}\n`);
-        throw pubErr;
+      if (isDevBuild) {
+        await appendLog(build.id, `📱 Development build - pulando upload para TestFlight. Baixe o .ipa na seção Artifacts e instale no device registrado.\n`);
+      } else {
+        await appendLog(build.id, `🚀 Uploading binary to TestFlight via App Store Connect API...\n`);
+        try {
+          await runCommand('fastlane', ['ci_upload'], iosDir, build.id, fastlaneEnv);
+          await appendLog(build.id, `✅ Uploaded to TestFlight successfully.\n`);
+        } catch (pubErr) {
+          await appendLog(build.id, `⚠️ TestFlight upload failed: ${pubErr.message}\n`);
+          throw pubErr;
+        }
       }
       await endStep(build.id, 'Publishing');
 

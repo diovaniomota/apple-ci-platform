@@ -22,9 +22,13 @@ platform :ios do
     profile_name = nil
     # Team ID configurado; pode ser sobrescrito pelo time real do profile baixado
     resolved_team = ENV["FASTLANE_TEAM_ID"]
+    # "app-store" (TestFlight/loja) ou "development" (.ipa para devices registrados)
+    export_method = "{{EXPORT_METHOD}}"
+    is_dev = export_method == "development"
+    sign_identity = is_dev ? "Apple Development" : "Apple Distribution"
     match_url = "{{MATCH_GIT_URL}}"
 
-    if match_url && (match_url.start_with?("http") || match_url.start_with?("git@"))
+    if !is_dev && match_url && (match_url.start_with?("http") || match_url.start_with?("git@"))
       begin
         match(
           type: "appstore",
@@ -51,21 +55,22 @@ platform :ios do
     end
 
     if !profile_uuid
-      UI.message("ℹ️ Fetching App Store provisioning profile via App Store Connect API Key...")
+      UI.message("ℹ️ Fetching #{is_dev ? 'Development' : 'App Store'} provisioning profile via App Store Connect API Key...")
 
       # sigh só baixa o profile - quem assina é o certificado. Garante que um
-      # Apple Distribution cert + chave privada exista no keychain local antes.
+      # cert do tipo certo + chave privada exista no keychain local antes.
       begin
-        get_certificates(generate_apple_certs: true)
+        get_certificates(development: is_dev, generate_apple_certs: true)
       rescue => e
-        UI.important("⚠️ Distribution certificate check failed: #{e.message}")
+        UI.important("⚠️ Certificate check failed: #{e.message}")
       end
 
       begin
-        # sigh has no `type` option: App Store is the default, and the other
-        # kinds are selected with the adhoc/development/developer_id flags.
+        # sigh has no `type` option: App Store is the default; development
+        # profiles are selected with the `development` flag.
         get_provisioning_profile(
           app_identifier: "{{BUNDLE_ID}}",
+          development: is_dev,
           force: true
         )
         profile_uuid = ENV["SIGH_UUID"]
@@ -97,7 +102,7 @@ platform :ios do
           path: "Runner.xcodeproj",
           team_id: resolved_team,
           profile_name: profile_uuid,
-          code_sign_identity: "Apple Distribution"
+          code_sign_identity: sign_identity
         )
       else
         # Último recurso: assinatura automática precisa de um cert Apple
@@ -118,7 +123,7 @@ platform :ios do
     end
 
     export_opts = {
-      method: "app-store"
+      method: export_method
     }
 
     if profile_uuid && !profile_uuid.empty?
@@ -154,7 +159,7 @@ platform :ios do
 
     gym_opts = {
       scheme: "{{SCHEME}}",
-      export_method: "app-store",
+      export_method: export_method,
       export_options: export_opts,
       clean: false,
       output_directory: "./build",

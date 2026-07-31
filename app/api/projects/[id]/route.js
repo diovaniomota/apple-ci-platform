@@ -36,6 +36,7 @@ export async function PUT(request, { params }) {
         appleAccountId: body.appleAccountId !== undefined ? (body.appleAccountId || null) : undefined,
         autoIncrementBuild: body.autoIncrementBuild !== undefined ? Boolean(body.autoIncrementBuild) : undefined,
         currentBuildNumber: body.currentBuildNumber !== undefined ? parseInt(body.currentBuildNumber, 10) : undefined,
+        distribution: body.distribution === 'development' ? 'development' : (body.distribution === 'testflight' ? 'testflight' : undefined),
       },
       include: {
         appleAccount: true

@@ -133,6 +133,18 @@ export default function ProjectDetails() {
                 </select>
               </div>
 
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Distribuição</label>
+                <select
+                  value={editForm.distribution || 'testflight'}
+                  onChange={e => setEditForm({ ...editForm, distribution: e.target.value })}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: '#0f172a', color: '#fff' }}
+                >
+                  <option value="testflight">🚀 TestFlight / App Store</option>
+                  <option value="development">📱 Development (.ipa para devices registrados, sem loja)</option>
+                </select>
+              </div>
+
               <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px', marginTop: '4px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <label style={{ fontWeight: 600, fontSize: '0.9rem', color: '#f8fafc', margin: 0 }}>

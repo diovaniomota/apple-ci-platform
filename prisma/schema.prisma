@@ -18,6 +18,9 @@ model Project {
   appleAccountId      String?
   autoIncrementBuild  Boolean       @default(true)
   currentBuildNumber  Int           @default(1)
+  // "testflight" = App Store/TestFlight; "development" = .ipa para instalar
+  // direto em devices registrados no time (sem loja)
+  distribution        String        @default("testflight")
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   builds              Build[]
