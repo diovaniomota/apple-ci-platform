@@ -623,8 +623,14 @@ async function processBuilds() {
         }
 
         const envPath = path.join(projectDir, '.env');
-        if (!fs.existsSync(envPath)) {
+        if (build.project.envVars && build.project.envVars.trim()) {
+          // Variáveis definidas no painel: escreve o .env real do app.
+          // Sem isso, apps com flutter_dotenv (Supabase etc.) travam na splash.
+          fs.writeFileSync(envPath, build.project.envVars);
+          await appendLog(build.id, `🔑 Wrote project environment variables to .env (${build.project.envVars.split('\n').filter(l => l.includes('=')).length} vars)\n`);
+        } else if (!fs.existsSync(envPath)) {
           fs.writeFileSync(envPath, '# Auto-created .env file for CI build\n');
+          await appendLog(build.id, `⚠️ No environment variables configured for this project - created empty .env. Apps that read config at startup may hang on splash.\n`);
         }
         const flutterCmd = path.join(process.env.HOME || '/Users/diovaniomota', 'development/flutter/bin/flutter');
         await runCommand(flutterCmd, ['clean'], projectDir, build.id, fastlaneEnv);

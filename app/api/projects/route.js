@@ -38,7 +38,8 @@ export async function POST(request) {
         buildScheme: buildScheme || 'Runner',
         bundleId: bundleId || 'com.example.app',
         appleAccountId: appleAccountId || null,
-        distribution: distribution === 'development' ? 'development' : 'testflight'
+        distribution: distribution === 'development' ? 'development' : 'testflight',
+        envVars: typeof body.envVars === 'string' ? body.envVars : ''
       },
       include: {
         appleAccount: true

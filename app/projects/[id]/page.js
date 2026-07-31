@@ -145,6 +145,22 @@ export default function ProjectDetails() {
                 </select>
               </div>
 
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Variáveis de Ambiente (.env do build)</label>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  Escrito como .env na raiz do projeto em cada build. Formato: CHAVE=valor, uma por linha.
+                </p>
+                <textarea
+                  value={editForm.envVars || ''}
+                  onChange={e => setEditForm({ ...editForm, envVars: e.target.value })}
+                  rows={5}
+                  placeholder={'SUPABASE_URL=https://xxxx.supabase.co\nSUPABASE_ANON_KEY=eyJ...'}
+                  spellCheck={false}
+                  autoComplete="off"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'monospace', fontSize: '0.8rem', resize: 'vertical' }}
+                />
+              </div>
+
               <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px', marginTop: '4px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <label style={{ fontWeight: 600, fontSize: '0.9rem', color: '#f8fafc', margin: 0 }}>
