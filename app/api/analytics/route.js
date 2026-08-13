@@ -40,14 +40,12 @@ export async function GET() {
     const nowMs = Date.now();
     let runners = [];
     try {
-      // Clean stale duplicate runner records older than 3 minutes
-      try {
-        const threeMinAgo = new Date(nowMs - 3 * 60 * 1000);
-        await prisma.runnerHealth.deleteMany({
-          where: { lastSeen: { lt: threeMinAgo } }
-        });
-      } catch (e) {}
-
+      // NAO apagar registros antigos aqui. A versao anterior deletava qualquer
+      // runner com lastSeen > 3min; como o fallback abaixo inventava um runner
+      // "ONLINE", o efeito era o oposto do desejado: quanto mais tempo o worker
+      // ficava morto, mais convicto o painel ficava de que ele estava no ar.
+      // O registro fica, e a regra dos 45s abaixo decide ONLINE/OFFLINE.
+      // (runnerId e @unique, entao upsert nao gera duplicatas de qualquer forma.)
       const runnerRecords = await prisma.runnerHealth.findMany({
         orderBy: { lastSeen: 'desc' }
       });
@@ -77,24 +75,25 @@ export async function GET() {
       console.error('Failed to fetch runner health:', e.message);
     }
 
-    // Fallback default runner if no DB entry exists yet
+    // Sem registro em RunnerHealth = nenhum worker jamais deu heartbeat.
+    // Reportar isso honestamente. Antes inventavamos um runner "ONLINE" aqui,
+    // o que fazia o painel afirmar que o Mac mini estava ativo mesmo com o
+    // daemon parado - justamente quando o alerta era mais necessario.
     if (runners.length === 0) {
-      const lastBuild = builds[0];
-      const detectedMachine = lastBuild?.machine || 'Mac mini (Intel Core i5)';
       runners = [
         {
-          id: 'default-runner',
-          runnerId: 'runner-macmini-01',
-          hostname: 'Mac mini Worker',
-          machine: detectedMachine,
-          status: runningBuilds > 0 ? 'BUILDING' : 'ONLINE',
+          id: 'no-runner',
+          runnerId: '-',
+          hostname: 'Nenhum runner conectado',
+          machine: 'Aguardando heartbeat do worker no Mac mini',
+          status: 'OFFLINE',
           cpuUsage: 0,
           memUsage: 0,
-          memTotal: 'Leitura em tempo real...',
+          memTotal: '--',
           diskUsage: 0,
-          diskFree: 'Aguardando runner...',
-          activeBuild: runningBuilds > 0 ? builds.find(b => b.status === 'RUNNING')?.id : null,
-          lastSeenAgoSec: 0
+          diskFree: '--',
+          activeBuild: null,
+          lastSeenAgoSec: null
         }
       ];
     }

@@ -30,6 +30,19 @@ export default async function Dashboard() {
   // P2022 = coluna presente no schema.prisma mas inexistente no banco.
   const isSchemaDrift = loadError?.code === 'P2022';
 
+  // Estado real do runner. O banner abaixo era estatico e afirmava
+  // "Mac mini Runner Active" mesmo com o daemon parado no Mac.
+  let runnerAgoSec = null;
+  try {
+    const runner = await prisma.runnerHealth.findFirst({ orderBy: { lastSeen: 'desc' } });
+    if (runner) {
+      runnerAgoSec = Math.round((Date.now() - new Date(runner.lastSeen).getTime()) / 1000);
+    }
+  } catch (e) {
+    // Banner meramente informativo: nao vale derrubar o dashboard por ele.
+  }
+  const runnerOnline = runnerAgoSec !== null && runnerAgoSec <= 45;
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -62,8 +75,17 @@ export default async function Dashboard() {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 10px #10b981' }} />
-            <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#f8fafc' }}>Mac mini Runner Active</span>
+            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: runnerOnline ? '#10b981' : '#ef4444', boxShadow: `0 0 10px ${runnerOnline ? '#10b981' : '#ef4444'}` }} />
+            <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#f8fafc' }}>
+              {runnerOnline ? 'Mac mini Runner Active' : 'Mac mini Runner Offline'}
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+              {runnerAgoSec === null
+                ? '(sem heartbeat)'
+                : runnerOnline
+                  ? `(ping ${runnerAgoSec}s)`
+                  : `(visto ha ${runnerAgoSec >= 60 ? `${Math.floor(runnerAgoSec / 60)}min` : `${runnerAgoSec}s`})`}
+            </span>
           </div>
           <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
           <span style={{ fontSize: '0.825rem', color: '#94a3b8' }}>

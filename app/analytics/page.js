@@ -85,6 +85,7 @@ export default function AnalyticsPage() {
   };
 
   const runners = data?.runners || [];
+  const onlineCount = runners.filter(r => r.status === 'ONLINE' || r.status === 'BUILDING').length;
 
   return (
     <div style={{ paddingBottom: '60px' }}>
@@ -211,7 +212,7 @@ export default function AnalyticsPage() {
             Saúde & Telemetria do Mac Mini Runner
           </h2>
           <span style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>
-            {runners.length} Runner(s) Ativo(s)
+            {onlineCount} Runner(s) Ativo(s)
           </span>
         </div>
 
@@ -262,7 +263,11 @@ export default function AnalyticsPage() {
                   </div>
 
                   <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    <span>Ping: {runner.lastSeenAgoSec}s atrás</span>
+                    <span>
+                      {runner.lastSeenAgoSec == null
+                        ? 'Sem heartbeat'
+                        : `Ping: ${runner.lastSeenAgoSec}s atrás`}
+                    </span>
                   </div>
                 </div>
 
