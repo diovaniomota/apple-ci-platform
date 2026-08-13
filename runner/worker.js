@@ -470,6 +470,50 @@ function formatFileSize(bytes) {
   return `${mb.toFixed(2)} MB`;
 }
 
+function hasBinary(bin) {
+  try {
+    execSync(`command -v ${bin}`, { stdio: 'ignore' });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Flutter, React Native (bare) e Expo managed. Retorna tambem o diretorio que
+// contem (ou vai conter) o projeto Xcode.
+function detectProjectType(projectDir) {
+  if (fs.existsSync(path.join(projectDir, 'pubspec.yaml'))) {
+    return { isFlutter: true, isReactNative: false, isExpo: false };
+  }
+
+  let deps = {};
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(projectDir, 'package.json'), 'utf8'));
+    deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+  } catch (e) {
+    // Sem package.json legivel: trata como projeto iOS nativo.
+  }
+
+  const isExpo = Boolean(deps.expo);
+  return {
+    isFlutter: false,
+    isReactNative: Boolean(deps['react-native'] || isExpo),
+    isExpo
+  };
+}
+
+// So o Flutter chama o projeto Xcode de "Runner". RN/Expo usam o nome do app,
+// entao descobrimos em disco em vez de assumir.
+function findXcodeProject(iosDir) {
+  try {
+    const found = fs.readdirSync(iosDir).filter(f => f.endsWith('.xcodeproj'));
+    if (!found.length) return null;
+    return found.includes('Runner.xcodeproj') ? 'Runner.xcodeproj' : found[0];
+  } catch (e) {
+    return null;
+  }
+}
+
 let isProcessingBuilds = false;
 
 async function processBuilds() {
@@ -618,8 +662,11 @@ async function processBuilds() {
 
       await endStep(build.id, 'Fetching app sources');
 
-      const isFlutter = fs.existsSync(path.join(projectDir, 'pubspec.yaml'));
-      const iosDir = isFlutter ? path.join(projectDir, 'ios') : projectDir;
+      const { isFlutter, isReactNative, isExpo } = detectProjectType(projectDir);
+      // Flutter e RN mantem o projeto Xcode em ios/. Em Expo managed essa pasta
+      // sequer existe no repo - o `expo prebuild` no passo de packages a gera
+      // antes de qualquer coisa aqui embaixo precisar dela.
+      const iosDir = (isFlutter || isReactNative) ? path.join(projectDir, 'ios') : projectDir;
 
       // STEP 3: Installing SDKs
       await startStep(build.id, 'Installing SDKs');
@@ -629,6 +676,18 @@ async function processBuilds() {
       if (await isBuildCancelled(build.id)) throw new Error('Build cancelado pelo usuário');
 
       // STEP 4: Get packages
+      // O .env vale para qualquer stack (flutter_dotenv, react-native-config,
+      // EXPO_PUBLIC_*). Antes isto vivia dentro do bloco Flutter, entao um
+      // projeto React Native nunca recebia as variaveis configuradas no painel.
+      const envPath = path.join(projectDir, '.env');
+      if (build.project.envVars && build.project.envVars.trim()) {
+        fs.writeFileSync(envPath, build.project.envVars);
+        await appendLog(build.id, `🔑 Wrote project environment variables to .env (${build.project.envVars.split('\n').filter(l => l.includes('=')).length} vars)\n`);
+      } else if (!fs.existsSync(envPath)) {
+        fs.writeFileSync(envPath, '# Auto-created .env file for CI build\n');
+        await appendLog(build.id, `⚠️ No environment variables configured for this project - created empty .env. Apps that read config at startup may hang on splash.\n`);
+      }
+
       if (isFlutter) {
         clearFlutterLock();
         await startStep(build.id, 'Get packages');
@@ -639,20 +698,48 @@ async function processBuilds() {
           await appendLog(build.id, `⚡ Restored CocoaPods & plugin cache for project ${build.projectId}\n`);
         }
 
-        const envPath = path.join(projectDir, '.env');
-        if (build.project.envVars && build.project.envVars.trim()) {
-          // Variáveis definidas no painel: escreve o .env real do app.
-          // Sem isso, apps com flutter_dotenv (Supabase etc.) travam na splash.
-          fs.writeFileSync(envPath, build.project.envVars);
-          await appendLog(build.id, `🔑 Wrote project environment variables to .env (${build.project.envVars.split('\n').filter(l => l.includes('=')).length} vars)\n`);
-        } else if (!fs.existsSync(envPath)) {
-          fs.writeFileSync(envPath, '# Auto-created .env file for CI build\n');
-          await appendLog(build.id, `⚠️ No environment variables configured for this project - created empty .env. Apps that read config at startup may hang on splash.\n`);
-        }
         const flutterCmd = path.join(process.env.HOME || '/Users/diovaniomota', 'development/flutter/bin/flutter');
         await runCommand(flutterCmd, ['clean'], projectDir, build.id, fastlaneEnv);
         clearFlutterLock();
         await runCommand(flutterCmd, ['pub', 'get'], projectDir, build.id, fastlaneEnv);
+        await endStep(build.id, 'Get packages');
+      } else if (isReactNative) {
+        await startStep(build.id, 'Get packages');
+        await appendLog(build.id, `⚛️ React Native${isExpo ? ' (Expo)' : ''} project detected...\n`);
+
+        // O Podfile do RN resolve o react-native via `require.resolve`, entao
+        // node_modules precisa existir ANTES do pod install.
+        let pmCmd = 'npm';
+        let pmArgs = ['install'];
+        if (fs.existsSync(path.join(projectDir, 'yarn.lock')) && hasBinary('yarn')) {
+          pmCmd = 'yarn';
+          pmArgs = ['install', '--frozen-lockfile'];
+        } else if (fs.existsSync(path.join(projectDir, 'pnpm-lock.yaml')) && hasBinary('pnpm')) {
+          pmCmd = 'pnpm';
+          pmArgs = ['install', '--frozen-lockfile'];
+        } else if (fs.existsSync(path.join(projectDir, 'package-lock.json'))) {
+          pmArgs = ['ci'];
+        }
+        await appendLog(build.id, `📦 Installing JS dependencies (${pmCmd} ${pmArgs.join(' ')})...\n`);
+        await runCommand(pmCmd, pmArgs, projectDir, build.id, fastlaneEnv);
+
+        if (isExpo && !fs.existsSync(path.join(projectDir, 'ios', 'Podfile'))) {
+          // Expo managed: ios/ nao e versionada, e gerada aqui a partir do
+          // app.json/app.config. --no-install porque o passo de CocoaPods
+          // adiante roda `pod install` aproveitando o cache por projeto.
+          await appendLog(build.id, `🧬 Expo managed detected - running prebuild to generate the ios/ project...\n`);
+          await runCommand(
+            'npx',
+            ['expo', 'prebuild', '--platform', 'ios', '--no-install'],
+            projectDir,
+            build.id,
+            { ...fastlaneEnv, CI: '1' }
+          );
+        }
+
+        if (!fs.existsSync(iosDir)) {
+          throw new Error('Pasta ios/ nao encontrada apos a instalacao de dependencias. Em Expo managed, verifique se o `expo prebuild` concluiu; em RN bare, se a pasta ios/ esta versionada no repositorio.');
+        }
         await endStep(build.id, 'Get packages');
       }
 
@@ -678,18 +765,32 @@ async function processBuilds() {
         fs.mkdirSync(fastlaneDir, { recursive: true });
       }
 
+      // Neste ponto o ios/ ja existe (prebuild rodou no passo de packages).
+      const xcodeProjName = findXcodeProject(iosDir) || 'Runner.xcodeproj';
+      const xcodeProjBase = xcodeProjName.replace(/\.xcodeproj$/, '');
+
+      // "Runner" e o default do painel, herdado do Flutter. Num projeto RN esse
+      // scheme nao existe e o gym falharia - cai para o nome real do projeto.
+      let resolvedScheme = build.project.buildScheme || 'Runner';
+      if (!isFlutter && resolvedScheme === 'Runner' && xcodeProjBase !== 'Runner') {
+        await appendLog(build.id, `ℹ️ Scheme "Runner" nao se aplica a este projeto - usando "${xcodeProjBase}".\n`);
+        resolvedScheme = xcodeProjBase;
+      }
+      await appendLog(build.id, `🛠️ Xcode project: ${xcodeProjName} | scheme: ${resolvedScheme}\n`);
+
       const templatePath = path.join(__dirname, 'fastlane', 'Fastfile');
       let fastfileContent = fs.readFileSync(templatePath, 'utf8');
       const isDevBuild = build.project.distribution === 'development';
       fastfileContent = fastfileContent
-        .replaceAll('{{SCHEME}}', build.project.buildScheme || 'Runner')
+        .replaceAll('{{SCHEME}}', resolvedScheme)
+        .replaceAll('{{XCODEPROJ}}', xcodeProjName)
         .replaceAll('{{BUNDLE_ID}}', build.project.bundleId)
         .replaceAll('{{EXPORT_METHOD}}', isDevBuild ? 'development' : 'app-store')
         .replaceAll('{{MATCH_GIT_URL}}', matchUrl || '');
 
       fs.writeFileSync(path.join(fastlaneDir, 'Fastfile'), fastfileContent);
 
-      const pbxprojPath = path.join(iosDir, 'Runner.xcodeproj', 'project.pbxproj');
+      const pbxprojPath = path.join(iosDir, xcodeProjName, 'project.pbxproj');
       if (fs.existsSync(pbxprojPath)) {
         let pbxprojContent = fs.readFileSync(pbxprojPath, 'utf8');
         pbxprojContent = pbxprojContent

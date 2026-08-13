@@ -43,7 +43,7 @@ platform :ios do
         resolved_team = match_team if match_team && !match_team.empty?
         update_code_signing_settings(
           use_automatic_signing: false,
-          path: "Runner.xcodeproj",
+          path: "{{XCODEPROJ}}",
           team_id: resolved_team,
           profile_name: "match AppStore {{BUNDLE_ID}}",
           code_sign_identity: "Apple Distribution"
@@ -99,7 +99,7 @@ platform :ios do
 
         update_code_signing_settings(
           use_automatic_signing: false,
-          path: "Runner.xcodeproj",
+          path: "{{XCODEPROJ}}",
           team_id: resolved_team,
           profile_name: profile_uuid,
           code_sign_identity: sign_identity
@@ -116,7 +116,7 @@ platform :ios do
         # here makes Xcode fail with "conflicting provisioning settings".
         update_code_signing_settings(
           use_automatic_signing: true,
-          path: "Runner.xcodeproj",
+          path: "{{XCODEPROJ}}",
           team_id: resolved_team
         )
       end
