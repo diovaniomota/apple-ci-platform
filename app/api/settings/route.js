@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../../lib/prisma';
 
 // Keys we allow (whitelist to avoid arbitrary writes)
 const ALLOWED_KEYS = [

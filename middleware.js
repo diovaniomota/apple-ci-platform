@@ -16,8 +16,12 @@ export function middleware(request) {
     return NextResponse.next();
   }
 
-  // Redirect to /login if trying to access protected pages without auth_token
   if (!authToken) {
+    // Para rotas de API, responder 401 em JSON. Redirecionar um fetch() para o
+    // HTML do /login faz o cliente quebrar no res.json() com um erro confuso.
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
+    }
     const loginUrl = new URL('/login', request.url);
     return NextResponse.redirect(loginUrl);
   }
@@ -35,6 +39,12 @@ export const config = {
     '/api/projects/:path*',
     '/api/builds/:path*',
     '/api/analytics/:path*',
-    '/api/settings'
+    '/api/settings',
+    // Estas faltavam no matcher e ficavam publicas. /api/apple-accounts servia
+    // ascKeyContent (a chave privada .p8 da App Store Connect) e matchPassword
+    // para qualquer visitante nao autenticado.
+    '/api/apple-accounts/:path*',
+    '/api/users/:path*',
+    '/api/auth/:path*'
   ]
 };

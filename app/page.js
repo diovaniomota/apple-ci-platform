@@ -1,22 +1,34 @@
 import Link from 'next/link';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './lib/prisma';
 import { Plus, GitBranch, Play } from 'lucide-react';
-
-const prisma = new PrismaClient();
 
 export const dynamic = 'force-dynamic';
 
 export default async function Dashboard() {
-  const projects = await prisma.project.findMany({
-    include: {
-      appleAccount: true,
-      builds: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      }
-    },
-    orderBy: { createdAt: 'desc' }
-  });
+  // Sem try/catch, qualquer erro do Prisma aqui derruba a pagina inteira e a
+  // Vercel mostra apenas "a server-side exception has occurred", sem indicar a
+  // causa. Preferimos renderizar o diagnostico real na tela.
+  let projects = [];
+  let loadError = null;
+
+  try {
+    projects = await prisma.project.findMany({
+      include: {
+        appleAccount: true,
+        builds: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+  } catch (error) {
+    loadError = error;
+    console.error('[dashboard] Falha ao carregar projetos:', error);
+  }
+
+  // P2022 = coluna presente no schema.prisma mas inexistente no banco.
+  const isSchemaDrift = loadError?.code === 'P2022';
 
   return (
     <div>
@@ -64,8 +76,40 @@ export default async function Dashboard() {
         </Link>
       </div>
 
+      {loadError && (
+        <div
+          style={{
+            margin: '0 0 28px 0',
+            padding: '18px 20px',
+            borderRadius: '12px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.3)'
+          }}
+        >
+          <h3 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: '#f87171' }}>
+            Nao foi possivel carregar os projetos
+          </h3>
+          {isSchemaDrift ? (
+            <p style={{ margin: 0, fontSize: '0.875rem', color: '#fca5a5', lineHeight: 1.6 }}>
+              O banco de dados esta desatualizado em relacao ao <code>prisma/schema.prisma</code>:
+              existe uma coluna no schema que nao existe no Postgres. Aplique{' '}
+              <code>prisma/sql/001_add_project_columns.sql</code> no SQL Editor do Supabase, ou rode{' '}
+              <code>npx prisma db push</code> com a <code>DATABASE_URL</code> de producao.
+            </p>
+          ) : (
+            <p style={{ margin: 0, fontSize: '0.875rem', color: '#fca5a5', lineHeight: 1.6 }}>
+              Verifique a conexao com o banco e as variaveis <code>DATABASE_URL</code> /{' '}
+              <code>DIRECT_URL</code> na Vercel.
+            </p>
+          )}
+          <p style={{ margin: '10px 0 0 0', fontSize: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>
+            {loadError.code ? `${loadError.code}: ` : ''}{loadError.message?.split('\n')[0]}
+          </p>
+        </div>
+      )}
+
       <div className="projects-grid">
-        {projects.length === 0 && (
+        {!loadError && projects.length === 0 && (
           <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', background: 'rgba(30, 41, 59, 0.4)', borderRadius: '12px' }}>
             <p style={{ color: 'var(--text-muted)' }}>No projects found. Create your first project to get started!</p>
           </div>
