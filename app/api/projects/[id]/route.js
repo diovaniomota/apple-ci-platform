@@ -30,6 +30,8 @@ export async function PUT(request, { params }) {
       data: {
         name: body.name,
         repoUrl: body.repoUrl,
+        repoUsername: body.repoUsername !== undefined ? (body.repoUsername || null) : undefined,
+        repoPassword: body.repoPassword !== undefined ? (body.repoPassword || null) : undefined,
         branch: body.branch,
         bundleId: body.bundleId,
         buildScheme: body.buildScheme,

@@ -11,6 +11,8 @@ export default function NewProject() {
   const [formData, setFormData] = useState({
     name: '',
     repoUrl: '',
+    repoUsername: '',
+    repoPassword: '',
     branch: 'main',
     buildScheme: 'App',
     bundleId: 'com.example.app',
@@ -70,6 +72,39 @@ export default function NewProject() {
             style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(15, 23, 42, 0.5)', color: 'white' }}
             placeholder="https://github.com/user/repo.git"
           />
+        </div>
+
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '16px' }}>
+          <label style={{ display: 'block', marginBottom: '10px', color: '#e2e8f0', fontWeight: 600, fontSize: '0.9rem' }}>
+            🔑 Credenciais Git (para repositórios privados)
+          </label>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px', marginTop: 0 }}>
+            Preencha caso o repositório exija autenticação HTTPS (GitHub Personal Token, Azure DevOps, Bitbucket, etc.)
+          </p>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Username</label>
+              <input 
+                type="text"
+                value={formData.repoUsername}
+                onChange={e => setFormData({...formData, repoUsername: e.target.value})}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', fontSize: '0.85rem' }}
+                placeholder="diovanio.mota"
+                autoComplete="off"
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Password / Token</label>
+              <input 
+                type="password"
+                value={formData.repoPassword}
+                onChange={e => setFormData({...formData, repoPassword: e.target.value})}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', fontSize: '0.85rem' }}
+                placeholder="ghp_xxxx ou token"
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
         </div>
 
         <div>

@@ -101,6 +101,25 @@ export default function ProjectDetails() {
                 <input required type="text" value={editForm.repoUrl || ''} onChange={e => setEditForm({...editForm, repoUrl: e.target.value})} style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: '#fff' }} />
               </div>
 
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', color: '#e2e8f0', fontWeight: 600, fontSize: '0.85rem' }}>
+                  🔑 Credenciais Git (repositórios privados)
+                </label>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '10px', marginTop: 0 }}>
+                  Preencha caso o repositório exija autenticação HTTPS (GitHub Token, Azure DevOps, Bitbucket, etc.)
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '4px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Username</label>
+                    <input type="text" value={editForm.repoUsername || ''} onChange={e => setEditForm({...editForm, repoUsername: e.target.value})} style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: '#fff', fontSize: '0.85rem' }} placeholder="diovanio.mota" autoComplete="off" />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '4px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Password / Token</label>
+                    <input type="password" value={editForm.repoPassword || ''} onChange={e => setEditForm({...editForm, repoPassword: e.target.value})} style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: '#fff', fontSize: '0.85rem' }} placeholder="ghp_xxxx ou token" autoComplete="new-password" />
+                  </div>
+                </div>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Branch</label>

@@ -12,6 +12,8 @@ model Project {
   id                  String        @id @default(uuid())
   name                String
   repoUrl             String
+  repoUsername        String?
+  repoPassword        String?
   branch              String        @default("main")
   buildScheme         String
   bundleId            String

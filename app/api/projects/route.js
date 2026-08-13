@@ -24,7 +24,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, repoUrl, branch, buildScheme, bundleId, appleAccountId, distribution } = body;
+    const { name, repoUrl, repoUsername, repoPassword, branch, buildScheme, bundleId, appleAccountId, distribution } = body;
 
     if (!name || !repoUrl) {
       return NextResponse.json({ error: 'Name and repoUrl are required' }, { status: 400 });
@@ -34,6 +34,8 @@ export async function POST(request) {
       data: {
         name,
         repoUrl,
+        repoUsername: repoUsername || null,
+        repoPassword: repoPassword || null,
         branch: branch || 'main',
         buildScheme: buildScheme || 'Runner',
         bundleId: bundleId || 'com.example.app',

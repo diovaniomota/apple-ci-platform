@@ -586,8 +586,25 @@ async function processBuilds() {
 
       // STEP 2: Fetching app sources
       await startStep(build.id, 'Fetching app sources');
-      await appendLog(build.id, `📦 Cloning repository...\n   ${build.project.repoUrl} [${build.project.branch}]\n`);
-      await runCommand('git', ['clone', '-b', build.project.branch, '--depth=1', build.project.repoUrl, projectDir], WORKSPACE_DIR, build.id, fastlaneEnv);
+      
+      // Build authenticated clone URL if Git credentials are configured
+      let cloneUrl = build.project.repoUrl;
+      const repoUser = build.project.repoUsername;
+      const repoPass = build.project.repoPassword;
+      if (repoUser && repoPass) {
+        try {
+          const parsed = new URL(cloneUrl);
+          parsed.username = encodeURIComponent(repoUser);
+          parsed.password = encodeURIComponent(repoPass);
+          cloneUrl = parsed.toString();
+          await appendLog(build.id, `📦 Cloning repository (authenticated)...\n   ${build.project.repoUrl} [${build.project.branch}]\n`);
+        } catch (e) {
+          await appendLog(build.id, `📦 Cloning repository...\n   ${build.project.repoUrl} [${build.project.branch}]\n`);
+        }
+      } else {
+        await appendLog(build.id, `📦 Cloning repository...\n   ${build.project.repoUrl} [${build.project.branch}]\n`);
+      }
+      await runCommand('git', ['clone', '-b', build.project.branch, '--depth=1', cloneUrl, projectDir], WORKSPACE_DIR, build.id, fastlaneEnv);
 
       // Extract real short commit hash
       let commitHash = 'b3e0011';
