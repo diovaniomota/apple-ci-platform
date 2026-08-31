@@ -33,17 +33,62 @@ console.log(`Workspace: ${WORKSPACE_DIR}`);
 console.log(`Cache Dir: ${CACHE_DIR}`);
 
 // Get system metrics (CPU, RAM, Disk) directly from Mac mini hardware
+// Uso de CPU medido por DELTA entre duas amostras dos contadores do kernel.
+//
+// A versao anterior somava `ps -A -o %cpu`, mas essa coluna e a media de uso do
+// processo ao longo de TODA a vida dele - nao o instante atual. Um processo que
+// queimou CPU no inicio do build continua inflando o total muito depois de estar
+// ocioso, e picos reais e curtos nem apareciam. Comparar contadores acumulados
+// entre dois heartbeats da o uso real do intervalo, que e como o Activity
+// Monitor e o `top` funcionam.
+let prevCpuSample = null;
+
+function sampleCpuUsage() {
+  const cpus = os.cpus();
+  if (!cpus || !cpus.length) return null;
+
+  let idle = 0;
+  let total = 0;
+  for (const cpu of cpus) {
+    for (const mode of Object.keys(cpu.times)) total += cpu.times[mode];
+    idle += cpu.times.idle;
+  }
+
+  const previous = prevCpuSample;
+  prevCpuSample = { idle, total };
+
+  // A primeira leitura nao tem intervalo com que comparar.
+  if (!previous) return null;
+
+  const idleDelta = idle - previous.idle;
+  const totalDelta = total - previous.total;
+  if (totalDelta <= 0) return null;
+
+  const usage = 100 * (1 - idleDelta / totalDelta);
+  return parseFloat(Math.min(100, Math.max(0, usage)).toFixed(1));
+}
+
+// os.hostname() devolve o nome que o DHCP do roteador anuncia quando o Mac nao
+// tem HostName fixo - foi por isso que o painel trocou "Mac-mini-de-Diovanio.local"
+// por "MinideDiovanio.bwrouter" depois de um reboot. O LocalHostName e o nome
+// estavel que o proprio macOS mantem e nao muda de rede para rede.
+function getRunnerHostname() {
+  try {
+    const local = execSync('scutil --get LocalHostName 2>/dev/null').toString().trim();
+    if (local) return `${local}.local`;
+  } catch (e) {}
+  return os.hostname() || 'Mac-mini-Runner';
+}
+
 function getSystemMetrics() {
   let cpuUsage = 5.0;
   let memUsage = 60.0;
   let memTotal = '4 GB';
   let diskUsage = 25.0;
   let diskFree = '70 GB free';
-  let hostname = os.hostname() || 'Mac-mini-Runner';
+  let hostname = getRunnerHostname();
 
   try {
-    hostname = os.hostname() || 'Mac-mini-Runner';
-
     // 1. Extract exact physical RAM from macOS system_profiler or sysctl
     let realMemStr = '';
     try {
@@ -78,14 +123,18 @@ function getSystemMetrics() {
         const active = parseInt(activeMatch[1], 10) || 0;
         const wired = parseInt(wiredMatch[1], 10) || 0;
         const comp = compMatch ? (parseInt(compMatch[1], 10) || 0) : 0;
-        const pageSize = 4096;
+        // O vm_stat informa o tamanho da pagina no cabecalho (4096 em Intel,
+        // 16384 em Apple Silicon). Fixar 4096 erraria por 4x num Mac ARM.
+        const pageSizeMatch = vmStatStr.match(/page size of (\d+) bytes/);
+        const pageSize = pageSizeMatch ? parseInt(pageSizeMatch[1], 10) : 4096;
 
         const usedBytes = (active + wired + comp) * pageSize;
         const totalMemBytes = os.totalmem() || 4294967296;
 
+        // Sem grampos artificiais. A versao anterior reescrevia >95% para 92% e
+        // <10% para 15%, ou seja, mentia exatamente quando o dado mais importa:
+        // sob pressao de memoria num Mac de 4 GB compilando React Native.
         memUsage = parseFloat(((usedBytes / totalMemBytes) * 100).toFixed(1));
-        if (memUsage > 95) memUsage = 92.0;
-        if (memUsage < 10) memUsage = 15.0;
       }
     } catch (e) {
       const totalMemBytes = os.totalmem();
@@ -95,20 +144,16 @@ function getSystemMetrics() {
       }
     }
 
-    // 3. Real CPU Usage % (sum of active processes divided by CPU cores)
-    try {
-      const psCpuStr = execSync('ps -A -o %cpu 2>/dev/null').toString().split('\n');
-      let totalCpu = 0;
-      for (let i = 1; i < psCpuStr.length; i++) {
-        const val = parseFloat(psCpuStr[i].trim());
-        if (!isNaN(val)) totalCpu += val;
-      }
-      const cpusCount = os.cpus()?.length || 2;
-      cpuUsage = parseFloat(Math.min(99.9, totalCpu / cpusCount).toFixed(1));
-    } catch (e) {
+    // 3. Uso real de CPU no intervalo desde o heartbeat anterior.
+    const sampled = sampleCpuUsage();
+    if (sampled !== null) {
+      cpuUsage = sampled;
+    } else {
+      // Primeiro heartbeat do processo: ainda nao ha intervalo. Usa o load
+      // average de 1 minuto como aproximacao ate a proxima amostra.
       const load = os.loadavg();
       const cpusCount = os.cpus()?.length || 2;
-      cpuUsage = Math.min(99.9, parseFloat(((load[0] / cpusCount) * 100).toFixed(1))) || 5.0;
+      cpuUsage = Math.min(100, parseFloat(((load[0] / cpusCount) * 100).toFixed(1))) || 0.0;
     }
 
     // 4. Disk Free Space
@@ -116,7 +161,8 @@ function getSystemMetrics() {
     const dfLines = dfOutput.trim().split('\n');
     if (dfLines.length > 1) {
       const parts = dfLines[1].split(/\s+/);
-      if (parts.length >= 4) {
+      // Le parts[4] (Capacity), entao precisa de 5 colunas - nao 4.
+      if (parts.length >= 5) {
         diskUsage = parseFloat((parts[4] || '0%').replace('%', '')) || 0.0;
         diskFree = `${parts[3]} free`;
       }
@@ -470,6 +516,36 @@ function formatFileSize(bytes) {
   return `${mb.toFixed(2)} MB`;
 }
 
+// Le o campo "Variaveis de Ambiente" do painel (formato dotenv) como objeto.
+// Elas ja eram escritas no arquivo .env do projeto, mas CocoaPods, Expo e o
+// proprio React Native leem configuracao do ENVIRONMENT do processo, nao do
+// .env - entao precisam ser exportadas tambem.
+function parseEnvVars(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'string') return out;
+
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) continue;
+
+    const key = trimmed.slice(0, eq).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+
+    let value = trimmed.slice(eq + 1).trim();
+    const quoted =
+      value.length >= 2 &&
+      ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'")));
+    if (quoted) value = value.slice(1, -1);
+
+    out[key] = value;
+  }
+  return out;
+}
+
 function hasBinary(bin) {
   try {
     execSync(`command -v ${bin}`, { stdio: 'ignore' });
@@ -599,7 +675,13 @@ async function processBuilds() {
         } catch (e) {}
       }
 
+      // As variaveis do painel entram como BASE do ambiente: assim tudo abaixo
+      // (chaves de assinatura, match, ASC API) mantem precedencia e nao pode
+      // ser sobrescrito sem querer por uma entrada do campo de env vars.
+      const projectEnv = parseEnvVars(build.project.envVars);
+
       const fastlaneEnv = {
+        ...projectEnv,
         FASTLANE_HIDE_CHANGELOG: '1',
         FASTLANE_SKIP_UPDATE_CHECK: '1',
         FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: '120',
@@ -619,6 +701,12 @@ async function processBuilds() {
         const p8Path = path.join(WORKSPACE_DIR, `AuthKey_${build.id}.p8`);
         fs.writeFileSync(p8Path, keyContent);
         fastlaneEnv.APP_STORE_CONNECT_API_KEY_KEY_FILEPATH = p8Path;
+      }
+
+      const projectEnvKeys = Object.keys(projectEnv);
+      if (projectEnvKeys.length) {
+        // Apenas os nomes: os valores podem ser segredos e o log fica visivel.
+        await appendLog(build.id, `🌱 Exported ${projectEnvKeys.length} project variable(s) to the build environment: ${projectEnvKeys.join(', ')}\n`);
       }
 
       if (fs.existsSync(projectDir)) {
