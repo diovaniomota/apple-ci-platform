@@ -20,7 +20,12 @@ export async function GET(request) {
     const cancelledBuilds = builds.filter(b => b.status === 'CANCELLED').length;
     const runningBuilds = builds.filter(b => b.status === 'RUNNING').length;
 
-    const successRate = totalBuilds > 0 ? ((successBuilds / totalBuilds) * 100).toFixed(1) : '100.0';
+    // Taxa sobre builds CONCLUIDOS. Antes o denominador era o total, o que
+    // contava cancelamentos - acao deliberada do usuario - como se fossem
+    // falhas do pipeline, e contradizia o proprio card, que exibe
+    // "N Sucessos - M Falhas". Com 14/117 dava 12%; com 14/66, 21.2%.
+    const finishedBuilds = successBuilds + failedBuilds;
+    const successRate = finishedBuilds > 0 ? ((successBuilds / finishedBuilds) * 100).toFixed(1) : '0.0';
 
     // Calculate average duration of completed builds
     const completedBuilds = builds.filter(b => b.status === 'SUCCESS' || b.status === 'FAILED');
@@ -32,12 +37,28 @@ export async function GET(request) {
       totalSec += diffSec;
     });
 
-    const avgDurationSec = completedBuilds.length > 0 ? Math.round(totalSec / completedBuilds.length) : 267; // default 4m 27s
-    const avgDurationMinStr = `${Math.floor(avgDurationSec / 60)}m ${avgDurationSec % 60}s`;
+    const avgDurationSec = completedBuilds.length > 0 ? Math.round(totalSec / completedBuilds.length) : 0;
+    const formatDur = (sec) => `${Math.floor(sec / 60)}m ${sec % 60}s`;
 
-    // Estimate total time saved by caching (approx 10 minutes saved per build after first)
-    const cachedBuildsCount = Math.max(0, totalBuilds - projectsCount);
-    const timeSavedMin = cachedBuildsCount * 10;
+    // A MEDIA e inutil aqui: alguns builds ficaram horas parados antes de serem
+    // atualizados, e um deles marca 2692 minutos. Isso puxava a media para 67m
+    // enquanto a mediana real era 4m21s. A mediana e robusta a esses outliers.
+    //
+    // Nota: sem coluna startedAt no schema, a duracao e updatedAt - createdAt,
+    // ou seja, inclui o tempo na FILA antes do runner assumir. Nao e tempo de
+    // compilacao puro - o rotulo na interface diz isso explicitamente.
+    const ordenadas = completedBuilds
+      .map(b => Math.max(0, (new Date(b.updatedAt).getTime() - new Date(b.createdAt).getTime()) / 1000))
+      .sort((a, b) => a - b);
+    const medianDurationSec = ordenadas.length
+      ? Math.round(ordenadas[Math.floor(ordenadas.length / 2)])
+      : 0;
+
+    // REMOVIDO: "tempo economizado pelo cache" era (totalBuilds - projectsCount) * 10,
+    // isto e, 10 minutos inventados por build, sem medir cache algum - e contando
+    // ate builds cancelados e falhados como economia. Era um numero fabricado
+    // exibido como metrica medida. Nao ha dado no schema que permita calcular
+    // isso de verdade; medir exigiria registrar hits/misses de cache por build.
 
     // Fetch Mac mini runners health status
     const nowMs = Date.now();
@@ -62,14 +83,14 @@ export async function GET(request) {
         return {
           id: r.id,
           runnerId: r.runnerId,
-          hostname: r.hostname || 'Mac-mini',
+          hostname: r.hostname || '--',
           machine: r.machine || 'Runner',
           status: displayStatus,
           cpuUsage: r.cpuUsage || 0,
           memUsage: r.memUsage || 0,
-          memTotal: r.memTotal || '4 GB',
+          memTotal: r.memTotal || '--',
           diskUsage: r.diskUsage || 0,
-          diskFree: r.diskFree || '70 GB free',
+          diskFree: r.diskFree || '--',
           activeBuild: r.activeBuild,
           lastSeenAgoSec: Math.round(diffSec)
         };
@@ -109,8 +130,8 @@ export async function GET(request) {
         cancelledBuilds,
         runningBuilds,
         successRate: `${successRate}%`,
-        avgDuration: avgDurationMinStr,
-        timeSavedMin: `${timeSavedMin} min`,
+        avgDuration: formatDur(avgDurationSec),
+        medianDuration: formatDur(medianDurationSec),
         projectsCount
       },
       runners

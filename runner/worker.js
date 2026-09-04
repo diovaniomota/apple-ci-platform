@@ -84,8 +84,10 @@ function getSystemMetrics() {
   let cpuUsage = 5.0;
   let memUsage = 60.0;
   let memTotal = '4 GB';
-  let diskUsage = 25.0;
-  let diskFree = '70 GB free';
+  // Defaults neutros: se o `df` falhar, o painel deve mostrar ausencia de
+  // dado, nao um numero plausivel inventado.
+  let diskUsage = 0;
+  let diskFree = '--';
   let hostname = getRunnerHostname();
 
   try {

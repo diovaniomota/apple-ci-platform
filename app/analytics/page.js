@@ -157,7 +157,7 @@ export default function AnalyticsPage() {
         {/* Avg Duration Card */}
         <div className="glass-panel" style={{ padding: '22px', borderRadius: '14px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255,255,255,0.08)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Duração Média</span>
+            <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Duração Mediana</span>
             <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
               <Clock size={18} />
             </div>
@@ -173,7 +173,7 @@ export default function AnalyticsPage() {
         {/* Cache Time Saved Card */}
         <div className="glass-panel" style={{ padding: '22px', borderRadius: '14px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255,255,255,0.08)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Tempo Economizado</span>
+            <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Builds Cancelados</span>
             <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(168, 85, 247, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c084fc' }}>
               <Zap size={18} />
             </div>
@@ -209,7 +209,7 @@ export default function AnalyticsPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
           <Server size={22} color="#3b82f6" />
           <h2 style={{ fontSize: '1.35rem', fontWeight: 700, margin: 0 }}>
-            Saúde & Telemetria do Mac Mini Runner
+            Saúde & Telemetria do Runner
           </h2>
           <span style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>
             {onlineCount} Runner(s) Ativo(s)
@@ -361,7 +361,7 @@ export default function AnalyticsPage() {
                 {/* Footer Security Badge */}
                 <div style={{ marginTop: '22px', pt: '14px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <ShieldCheck size={14} color="#10b981" /> Daemon `launchctl` ativo
+                    <ShieldCheck size={14} color={runner.status === 'OFFLINE' ? '#64748b' : '#10b981'} /> {runner.status === 'OFFLINE' ? 'Sem heartbeat' : 'Heartbeat ativo'}
                   </span>
                   <span>IP: Local Runner</span>
                 </div>
