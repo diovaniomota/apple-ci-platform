@@ -1,50 +1,72 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { prisma } from '../../../lib/prisma';
 import { getUserFromRequest } from '../../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+// Solicita uma limpeza de disco ao runner.
+//
+// A versao anterior tentava apagar os diretorios aqui mesmo, com
+// `path.join(process.cwd(), 'builds-workspace')`. So que esta rota roda como
+// funcao serverless na Vercel: o cwd e /var/task, efemero, e nao tem relacao
+// nenhuma com o Mac onde os builds acontecem. Os `fs.existsSync` davam false,
+// os dois blocos eram pulados e a resposta ainda era `success: true` com
+// "Cleanup executed successfully" - o painel confirmava uma limpeza que jamais
+// aconteceu. Funcionava so em `next dev` na propria maquina, que e por onde o
+// problema provavelmente passou despercebido.
+//
+// Agora o pedido e gravado em Setting e o runner - que roda no Mac e ja tem a
+// rotina pronta - executa no seu ciclo de verificacao.
 export async function POST(request) {
   const usuario = await getUserFromRequest(request);
   if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
+
   try {
-    const workspaceDir = path.join(process.cwd(), 'builds-workspace');
-    const artifactsDir = path.join(process.cwd(), 'public', 'artifacts');
-    let itemsRemoved = 0;
-    const now = Date.now();
+    const agora = new Date().toISOString();
 
-    if (fs.existsSync(workspaceDir)) {
-      const files = fs.readdirSync(workspaceDir);
-      for (const file of files) {
-        const fullPath = path.join(workspaceDir, file);
-        try {
-          const stats = fs.statSync(fullPath);
-          if (stats.isDirectory() || file.startsWith('AuthKey_')) {
-            fs.rmSync(fullPath, { recursive: true, force: true });
-            itemsRemoved++;
-          }
-        } catch (e) {}
-      }
-    }
+    await prisma.setting.upsert({
+      where: { key: 'CLEANUP_REQUESTED_AT' },
+      update: { value: agora },
+      create: { key: 'CLEANUP_REQUESTED_AT', value: agora }
+    });
 
-    if (fs.existsSync(artifactsDir)) {
-      const artFiles = fs.readdirSync(artifactsDir);
-      for (const file of artFiles) {
-        const fullPath = path.join(artifactsDir, file);
-        try {
-          const stats = fs.statSync(fullPath);
-          if (now - stats.mtimeMs > 7 * 24 * 60 * 60 * 1000) {
-            fs.unlinkSync(fullPath);
-            itemsRemoved++;
-          }
-        } catch (e) {}
-      }
-    }
+    // Se nenhum runner estiver online, o pedido fica registrado mas ninguem o
+    // executa. Dizer isso e melhor do que prometer uma limpeza que nao vira.
+    const runner = await prisma.runnerHealth.findFirst({ orderBy: { lastSeen: 'desc' } });
+    const online = runner && (Date.now() - new Date(runner.lastSeen).getTime()) / 1000 <= 45;
 
     return NextResponse.json({
       success: true,
-      message: `SSD Disk Cleanup executed successfully. Cleaned ${itemsRemoved} items.`
+      requestedAt: agora,
+      runnerOnline: Boolean(online),
+      message: online
+        ? 'Limpeza solicitada ao runner. Deve concluir em alguns segundos - use "Atualizar Agora" para ver o disco.'
+        : 'Limpeza registrada, mas nenhum runner esta online. Ela sera executada assim que um se conectar.'
+    });
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// Consulta o resultado da ultima limpeza executada pelo runner.
+export async function GET(request) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
+
+  try {
+    const chaves = await prisma.setting.findMany({
+      where: { key: { in: ['CLEANUP_REQUESTED_AT', 'CLEANUP_DONE_AT', 'CLEANUP_LAST_RESULT'] } }
+    });
+    const mapa = Object.fromEntries(chaves.map((s) => [s.key, s.value]));
+
+    const pedido = mapa.CLEANUP_REQUESTED_AT ?? null;
+    const conclusao = mapa.CLEANUP_DONE_AT ?? null;
+
+    return NextResponse.json({
+      requestedAt: pedido,
+      doneAt: conclusao,
+      itemsRemoved: mapa.CLEANUP_LAST_RESULT ? Number(mapa.CLEANUP_LAST_RESULT) : null,
+      pending: Boolean(pedido && (!conclusao || conclusao < pedido))
     });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

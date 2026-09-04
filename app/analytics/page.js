@@ -44,18 +44,41 @@ export default function AnalyticsPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // A limpeza acontece no runner, nao aqui: esta pagina fala com a Vercel, que
+  // nao tem acesso ao disco do Mac. O POST registra o pedido e o GET acompanha
+  // a conclusao. Antes a interface declarava sucesso na hora, sem nada ter sido
+  // apagado de fato.
   const handleManualDiskCleanup = async () => {
     setCleaningDisk(true);
     setCleanMessage(null);
     try {
       const res = await fetch('/api/analytics/clean-disk', { method: 'POST' });
       const resData = await res.json();
-      if (res.ok) {
-        setCleanMessage(resData.message || 'Limpeza concluída com sucesso!');
-        fetchAnalytics();
-      } else {
-        setCleanMessage(`Erro: ${resData.error || 'Falha ao limpar'}`);
+      if (!res.ok) {
+        setCleanMessage(`Erro: ${resData.error || 'Falha ao solicitar limpeza'}`);
+        return;
       }
+
+      setCleanMessage(resData.message || 'Limpeza solicitada ao runner...');
+      if (!resData.runnerOnline) return;
+
+      // Aguarda o runner concluir. Ele verifica a cada 15s, entao damos margem.
+      const limite = Date.now() + 60000;
+      while (Date.now() < limite) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const st = await fetch('/api/analytics/clean-disk').then((r) => r.json()).catch(() => null);
+        if (st && !st.pending) {
+          const n = st.itemsRemoved;
+          setCleanMessage(
+            n === 0
+              ? 'Limpeza concluída: nada havia para remover.'
+              : `Limpeza concluída pelo runner: ${n} ${n === 1 ? 'item removido' : 'itens removidos'}.`
+          );
+          fetchAnalytics();
+          return;
+        }
+      }
+      setCleanMessage('Limpeza solicitada, mas o runner ainda não confirmou. Use "Atualizar Agora" em instantes.');
     } catch (e) {
       setCleanMessage('Erro ao comunicar com a API de limpeza.');
     } finally {

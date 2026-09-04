@@ -216,8 +216,12 @@ async function updateRunnerHeartbeat(status = 'ONLINE', activeBuildId = null) {
 }
 
 // Smart Disk Cleanup Routine (cleans workspaces older than 24h & transient AuthKey files)
-function runSmartDiskCleanup() {
-  console.log('🧹 Running Smart SSD Disk Cleanup...');
+// `manual` = limpeza pedida pelo painel, que deve liberar espaco AGORA. O modo
+// agendado so remove workspaces com mais de 24h; num pedido manual isso nao
+// serviria de nada, porque o lixo recente e justamente o maior. O workspace do
+// build em andamento nunca e tocado, em nenhum dos modos.
+function runSmartDiskCleanup({ manual = false } = {}) {
+  console.log(manual ? '🧹 Limpeza manual solicitada pelo painel...' : '🧹 Running Smart SSD Disk Cleanup...');
   let cleanedCount = 0;
 
   try {
@@ -228,10 +232,16 @@ function runSmartDiskCleanup() {
         const fullPath = path.join(WORKSPACE_DIR, file);
         const stats = fs.statSync(fullPath);
 
-        const isOldWorkspace = stats.isDirectory() && (now - stats.mtimeMs > 24 * 60 * 60 * 1000);
-        const isTempKey = file.startsWith('AuthKey_') && (now - stats.mtimeMs > 60 * 60 * 1000);
+        // Protege o build em andamento: seu diretorio comeca com o id do build,
+        // e a chave .p8 tem o id no nome.
+        const emUso = activeBuildId && file.startsWith(activeBuildId);
 
-        if (isOldWorkspace || isTempKey) {
+        const limiteWorkspace = manual ? 0 : 24 * 60 * 60 * 1000;
+        const limiteChave = manual ? 0 : 60 * 60 * 1000;
+        const isOldWorkspace = stats.isDirectory() && (now - stats.mtimeMs > limiteWorkspace);
+        const isTempKey = file.startsWith('AuthKey_') && (now - stats.mtimeMs > limiteChave);
+
+        if (!emUso && (isOldWorkspace || isTempKey)) {
           try {
             fs.rmSync(fullPath, { recursive: true, force: true });
             cleanedCount++;
@@ -240,8 +250,11 @@ function runSmartDiskCleanup() {
       }
     }
 
+    // Artefatos mantem a regra de 7 dias nos dois modos - sao os .ipa que as
+    // pessoas baixam. O que o modo manual dispensa e a exigencia de disco acima
+    // de 70%, para que o botao tambem limpe artefato velho sem estar apertado.
     const metrics = getSystemMetrics();
-    if (metrics.diskUsage > 70 && fs.existsSync(PUBLIC_ARTIFACTS_DIR)) {
+    if ((manual || metrics.diskUsage > 70) && fs.existsSync(PUBLIC_ARTIFACTS_DIR)) {
       const artFiles = fs.readdirSync(PUBLIC_ARTIFACTS_DIR);
       for (const file of artFiles) {
         const fullPath = path.join(PUBLIC_ARTIFACTS_DIR, file);
@@ -259,6 +272,8 @@ function runSmartDiskCleanup() {
   } catch (e) {
     console.error('Disk cleanup error:', e.message);
   }
+
+  return cleanedCount;
 }
 
 // Immediately trigger first heartbeat and run initial disk cleanup
@@ -268,6 +283,57 @@ runSmartDiskCleanup();
 setInterval(() => {
   updateRunnerHeartbeat(activeBuildId ? 'BUILDING' : 'ONLINE', activeBuildId);
 }, 10000);
+
+// ─── Limpeza sob demanda pedida pelo painel ──────────────────────────────────
+//
+// A rota /api/analytics/clean-disk roda como funcao serverless na Vercel, cujo
+// filesystem e efemero e nao tem acesso algum a esta maquina. Antes ela tentava
+// apagar os diretorios direto e, como eles nao existem la, pulava tudo e ainda
+// respondia `success: true` - o botao confirmava uma limpeza que nunca ocorreu.
+//
+// Agora a rota apenas registra o pedido em Setting, e quem executa e o runner,
+// que roda onde os arquivos de fato estao. O banco e o intermediario, mesmo
+// padrao que a plataforma ja usa para despachar builds.
+let ultimaLimpezaProcessada = null;
+
+async function verificarPedidoDeLimpeza() {
+  try {
+    const pedido = await prisma.setting.findUnique({ where: { key: 'CLEANUP_REQUESTED_AT' } });
+    if (!pedido?.value || pedido.value === ultimaLimpezaProcessada) return;
+
+    // Na primeira passagem apos subir o daemon, adota como processado qualquer
+    // pedido que ja foi concluido. Sem isto, todo reinicio do runner dispararia
+    // de novo a ultima limpeza pedida, por mais antiga que fosse.
+    if (ultimaLimpezaProcessada === null) {
+      const concluido = await prisma.setting.findUnique({ where: { key: 'CLEANUP_DONE_AT' } });
+      if (concluido?.value && concluido.value >= pedido.value) {
+        ultimaLimpezaProcessada = pedido.value;
+        return;
+      }
+    }
+
+    const removidos = runSmartDiskCleanup({ manual: true });
+    ultimaLimpezaProcessada = pedido.value;
+
+    const agora = new Date().toISOString();
+    await prisma.setting.upsert({
+      where: { key: 'CLEANUP_DONE_AT' },
+      update: { value: agora },
+      create: { key: 'CLEANUP_DONE_AT', value: agora }
+    });
+    await prisma.setting.upsert({
+      where: { key: 'CLEANUP_LAST_RESULT' },
+      update: { value: String(removidos) },
+      create: { key: 'CLEANUP_LAST_RESULT', value: String(removidos) }
+    });
+
+    console.log(`✅ Limpeza manual concluida. Itens removidos: ${removidos}`);
+  } catch (e) {
+    console.error('Erro ao verificar pedido de limpeza:', e.message);
+  }
+}
+
+setInterval(verificarPedidoDeLimpeza, 15000);
 
 // Run Smart Disk Cleanup every 6 hours
 setInterval(() => {
