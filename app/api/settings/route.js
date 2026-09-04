@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../lib/prisma';
+import { getUserFromRequest } from '../../lib/auth';
+import { redactSettings } from '../../lib/redact';
 
 // Keys we allow (whitelist to avoid arbitrary writes)
 const ALLOWED_KEYS = [
@@ -13,7 +15,9 @@ const ALLOWED_KEYS = [
   'APPLE_ID',
 ];
 
-export async function GET() {
+export async function GET(request) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const settings = await prisma.setting.findMany();
     // Return as object, mask sensitive values
@@ -21,13 +25,15 @@ export async function GET() {
     for (const s of settings) {
       result[s.key] = s.value;
     }
-    return NextResponse.json(result);
+    return NextResponse.json(redactSettings(result));
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 });
   }
 }
 
 export async function POST(request) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const body = await request.json();
     const updates = [];

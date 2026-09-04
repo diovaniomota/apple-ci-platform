@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
+import { getUserFromRequest } from '../../../lib/auth';
 
 export async function GET(request, { params }) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const build = await prisma.build.findUnique({
       where: { id: params.id },
@@ -28,7 +31,7 @@ export async function GET(request, { params }) {
     const machineSetting = await prisma.setting.findUnique({ where: { key: 'WORKER_MACHINE_NAME' } });
 
     const appleAccountEmail = build.project?.appleAccount?.appleId || 'Nenhuma conta vinculada';
-    const machine = machineSetting?.value || build.machine || 'Mac mini (Dual-Core Intel Core i5)';
+    const machine = machineSetting?.value || build.machine || 'Runner';
 
     return NextResponse.json({
       ...build,
@@ -43,6 +46,8 @@ export async function GET(request, { params }) {
 }
 
 export async function PATCH(request, { params }) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const body = await request.json();
     if (body.action === 'cancel') {

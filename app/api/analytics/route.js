@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../lib/prisma';
+import { getUserFromRequest } from '../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const builds = await prisma.build.findMany({
       orderBy: { createdAt: 'desc' }
@@ -60,7 +63,7 @@ export async function GET() {
           id: r.id,
           runnerId: r.runnerId,
           hostname: r.hostname || 'Mac-mini',
-          machine: r.machine || 'Mac mini (Apple Silicon / Intel)',
+          machine: r.machine || 'Runner',
           status: displayStatus,
           cpuUsage: r.cpuUsage || 0,
           memUsage: r.memUsage || 0,
@@ -85,7 +88,7 @@ export async function GET() {
           id: 'no-runner',
           runnerId: '-',
           hostname: 'Nenhum runner conectado',
-          machine: 'Aguardando heartbeat do worker no Mac mini',
+          machine: 'Aguardando heartbeat do worker',
           status: 'OFFLINE',
           cpuUsage: 0,
           memUsage: 0,

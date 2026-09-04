@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../lib/prisma';
+import { getUserFromRequest } from '../../lib/auth';
+import { redactProject } from '../../lib/redact';
 
-export async function GET() {
+export async function GET(request) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const projects = await prisma.project.findMany({
       include: {
@@ -13,13 +17,15 @@ export async function GET() {
       },
       orderBy: { createdAt: 'desc' }
     });
-    return NextResponse.json(projects);
+    return NextResponse.json(projects.map(redactProject));
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 });
   }
 }
 
 export async function POST(request) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const body = await request.json();
     const { name, repoUrl, repoUsername, repoPassword, branch, buildScheme, bundleId, appleAccountId, distribution } = body;

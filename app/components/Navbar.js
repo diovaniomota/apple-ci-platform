@@ -52,7 +52,6 @@ export default function Navbar() {
           <Settings size={16} />
           Settings
         </Link>
-        <span className="status-badge status-SUCCESS">Mac Mini Active</span>
 
         {currentUser && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.1)' }}>

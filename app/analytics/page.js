@@ -103,7 +103,7 @@ export default function AnalyticsPage() {
             Dashboard Analytics & Saúde do Runner
           </h1>
           <p style={{ color: 'var(--text-muted)', margin: '6px 0 0 0', fontSize: '0.95rem' }}>
-            Monitoramento de desempenho do pipeline CI/CD, retenção de artefatos e telemetria de hardware do Mac mini.
+            Monitoramento de desempenho do pipeline CI/CD, retenção de artefatos e telemetria de hardware do runner.
           </p>
         </div>
 

@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getUserFromRequest } from '../../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+export async function POST(request) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const workspaceDir = path.join(process.cwd(), 'builds-workspace');
     const artifactsDir = path.join(process.cwd(), 'public', 'artifacts');

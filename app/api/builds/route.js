@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../lib/prisma';
+import { getUserFromRequest } from '../../lib/auth';
 
 export async function POST(request) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const body = await request.json();
     const { projectId } = body;

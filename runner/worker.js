@@ -264,7 +264,7 @@ updateRunnerHeartbeat('ONLINE', null);
 runSmartDiskCleanup();
 
 setInterval(() => {
-  updateRunnerHeartbeat(isProcessingBuilds ? 'BUILDING' : 'ONLINE');
+  updateRunnerHeartbeat(activeBuildId ? 'BUILDING' : 'ONLINE', activeBuildId);
 }, 10000);
 
 // Run Smart Disk Cleanup every 6 hours
@@ -591,6 +591,11 @@ function findXcodeProject(iosDir) {
 }
 
 let isProcessingBuilds = false;
+// isProcessingBuilds indica apenas que um POLL esta em voo, nao que exista build.
+// Como o poll roda a cada 5s e a consulta ao Supabase (Oregon) leva ~3s, essa flag
+// fica ligada a maior parte do tempo mesmo ocioso. Usar activeBuildId para o status
+// evita reportar BUILDING sem build algum.
+let activeBuildId = null;
 
 async function processBuilds() {
   if (isProcessingBuilds) return;
@@ -632,6 +637,7 @@ async function processBuilds() {
     clearFlutterLock();
     console.log(`\n▶ Processing build: ${build.id} on ${detectedMachine}`);
 
+    activeBuildId = build.id;
     updateRunnerHeartbeat('BUILDING', build.id);
 
     const projectDir = path.join(WORKSPACE_DIR, `${build.id}-${Date.now()}`);
@@ -1072,6 +1078,7 @@ async function processBuilds() {
         await prisma.build.update({ where: { id: build.id }, data: { status: 'FAILED' } });
       }
     } finally {
+      activeBuildId = null;
       updateRunnerHeartbeat('ONLINE', null);
       // Garante que qualquer resto de log bufferizado chegue ao banco
       try { await flushLog(build.id); } catch (e) {}

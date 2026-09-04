@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../lib/prisma';
+import { getUserFromRequest } from '../../lib/auth';
+import { redactAppleAccount } from '../../lib/redact';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const accounts = await prisma.appleAccount.findMany({
       include: {
@@ -13,13 +17,15 @@ export async function GET() {
       },
       orderBy: { createdAt: 'desc' }
     });
-    return NextResponse.json(accounts);
+    return NextResponse.json(accounts.map(redactAppleAccount));
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 export async function POST(request) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const body = await request.json();
     const {

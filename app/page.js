@@ -77,7 +77,7 @@ export default async function Dashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: runnerOnline ? '#10b981' : '#ef4444', boxShadow: `0 0 10px ${runnerOnline ? '#10b981' : '#ef4444'}` }} />
             <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#f8fafc' }}>
-              {runnerOnline ? 'Mac mini Runner Active' : 'Mac mini Runner Offline'}
+              {runnerOnline ? 'Runner Ativo' : 'Runner Offline'}
             </span>
             <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
               {runnerAgoSec === null

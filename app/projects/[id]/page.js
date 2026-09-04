@@ -263,7 +263,7 @@ export default function ProjectDetails() {
           </h3>
         </div>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
-          Copie a URL abaixo e adicione no GitHub em <strong>Settings → Webhooks → Add Webhook</strong> do seu repositório. Toda vez que você der <code>git push</code> na branch <b>{project.branch}</b>, o Mac mini iniciará o build automaticamente!
+          Copie a URL abaixo e adicione no GitHub em <strong>Settings → Webhooks → Add Webhook</strong> do seu repositório. Toda vez que você der <code>git push</code> na branch <b>{project.branch}</b>, o runner iniciará o build automaticamente!
         </p>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

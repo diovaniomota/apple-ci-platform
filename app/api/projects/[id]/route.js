@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
+import { getUserFromRequest } from '../../../lib/auth';
+import { redactProject } from '../../../lib/redact';
 
 export async function GET(request, { params }) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const project = await prisma.project.findUnique({
       where: { id: params.id },
@@ -14,13 +18,15 @@ export async function GET(request, { params }) {
     });
     
     if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-    return NextResponse.json(project);
+    return NextResponse.json(redactProject(project));
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 });
   }
 }
 
 export async function PUT(request, { params }) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     const body = await request.json();
     const updatedProject = await prisma.project.update({
@@ -29,7 +35,10 @@ export async function PUT(request, { params }) {
         name: body.name,
         repoUrl: body.repoUrl,
         repoUsername: body.repoUsername !== undefined ? (body.repoUsername || null) : undefined,
-        repoPassword: body.repoPassword !== undefined ? (body.repoPassword || null) : undefined,
+        // Segredo write-only: campo em branco significa "nao alterar", nunca
+        // "apagar". A API nao devolve mais o valor atual (ver lib/redact.js),
+        // entao o formulario chega vazio - grava-lo destruiria a credencial em uso.
+        repoPassword: body.repoPassword ? body.repoPassword : undefined,
         branch: body.branch,
         bundleId: body.bundleId,
         buildScheme: body.buildScheme,
@@ -50,6 +59,8 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
+  const usuario = await getUserFromRequest(request);
+  if (!usuario) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   try {
     // Delete all builds first (cascade)
     await prisma.build.deleteMany({

@@ -85,7 +85,8 @@ export async function POST(request) {
         projectId: matchedProject.id,
         status: 'PENDING',
         commit: `${commitMsg} (${commitSha}) by ${commitAuthor}`,
-        machine: 'Mac mini (Intel Core i5)'
+        // O runner sobrescreve isto com a maquina real ao assumir o build.
+        machine: 'Aguardando runner'
       }
     });
 
