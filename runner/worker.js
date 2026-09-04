@@ -14,6 +14,19 @@ const prisma = new PrismaClient({
 
 const os = require('os');
 
+// Id do build realmente em andamento (null quando ocioso).
+//
+// Declarado aqui no topo de proposito: runSmartDiskCleanup() le esta variavel e
+// e chamada na inicializacao, antes do ponto do arquivo onde ela costumava ser
+// declarada. Com `let` mais abaixo, essa leitura caia na temporal dead zone e
+// lancava ReferenceError - engolido pelo try/catch da limpeza, que falharia em
+// silencio.
+//
+// Nao confundir com isProcessingBuilds, que indica apenas um POLL em voo: como o
+// poll roda a cada 5s e a consulta ao Supabase (Oregon) leva ~3s, aquela flag
+// fica ligada a maior parte do tempo mesmo ocioso, e reportava BUILDING sem build.
+let activeBuildId = null;
+
 const WORKSPACE_DIR = path.join(__dirname, '../builds-workspace');
 const PUBLIC_ARTIFACTS_DIR = path.join(__dirname, '../public/artifacts');
 const CACHE_DIR = path.join(__dirname, '../builds-cache');
@@ -262,6 +275,39 @@ function runSmartDiskCleanup({ manual = false } = {}) {
         if (now - stats.mtimeMs > 7 * 24 * 60 * 60 * 1000) {
           try {
             fs.unlinkSync(fullPath);
+            cleanedCount++;
+          } catch (e) {}
+        }
+      }
+    }
+
+    // ─── DerivedData e Archives do Xcode ────────────────────────────────────
+    //
+    // Estes ficam FORA do projeto, em ~/Library/Developer/Xcode, e por isso
+    // escapavam de toda a limpeza anterior - que so olhava builds-workspace e
+    // public/artifacts. Eram o unico consumo que crescia sem limite: ~940 MB de
+    // DerivedData por projeto, mais um .xcarchive de centenas de MB por build.
+    //
+    // Regra conservadora: no modo agendado, so remove o que nao e tocado ha 24h,
+    // preservando o cache quente de quem esta em desenvolvimento ativo. No modo
+    // manual, remove tudo. Com build em andamento, nao mexe em nada aqui - o
+    // Xcode escreve nesses diretorios durante a compilacao.
+    if (!activeBuildId) {
+      const limiteXcode = manual ? 0 : 24 * 60 * 60 * 1000;
+      const dirsXcode = [
+        path.join(os.homedir(), 'Library/Developer/Xcode/DerivedData'),
+        path.join(os.homedir(), 'Library/Developer/Xcode/Archives')
+      ];
+
+      for (const base of dirsXcode) {
+        if (!fs.existsSync(base)) continue;
+        for (const entrada of fs.readdirSync(base)) {
+          const alvo = path.join(base, entrada);
+          try {
+            const st = fs.statSync(alvo);
+            if (!st.isDirectory()) continue;
+            if (now - st.mtimeMs <= limiteXcode) continue;
+            fs.rmSync(alvo, { recursive: true, force: true });
             cleanedCount++;
           } catch (e) {}
         }
@@ -659,11 +705,6 @@ function findXcodeProject(iosDir) {
 }
 
 let isProcessingBuilds = false;
-// isProcessingBuilds indica apenas que um POLL esta em voo, nao que exista build.
-// Como o poll roda a cada 5s e a consulta ao Supabase (Oregon) leva ~3s, essa flag
-// fica ligada a maior parte do tempo mesmo ocioso. Usar activeBuildId para o status
-// evita reportar BUILDING sem build algum.
-let activeBuildId = null;
 
 async function processBuilds() {
   if (isProcessingBuilds) return;
