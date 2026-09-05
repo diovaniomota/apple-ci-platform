@@ -65,7 +65,14 @@ export async function GET(request) {
     return NextResponse.json({
       requestedAt: pedido,
       doneAt: conclusao,
-      itemsRemoved: mapa.CLEANUP_LAST_RESULT ? Number(mapa.CLEANUP_LAST_RESULT) : null,
+      // O worker passou a gravar o resultado como JSON ({ itens: N }); versoes
+      // anteriores gravavam o numero cru. Aceita os dois formatos.
+      itemsRemoved: (() => {
+        const bruto = mapa.CLEANUP_LAST_RESULT;
+        if (!bruto) return null;
+        try { const j = JSON.parse(bruto); return typeof j === 'object' ? (j.itens ?? null) : Number(j); }
+        catch (e) { return Number(bruto); }
+      })(),
       pending: Boolean(pedido && (!conclusao || conclusao < pedido))
     });
   } catch (error) {

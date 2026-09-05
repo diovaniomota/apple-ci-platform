@@ -24,6 +24,7 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [cleaningDisk, setCleaningDisk] = useState(false);
   const [cleanMessage, setCleanMessage] = useState(null);
+  const [manutencaoEmCurso, setManutencaoEmCurso] = useState(null);
 
   const fetchAnalytics = () => {
     fetch('/api/analytics')
@@ -48,6 +49,66 @@ export default function AnalyticsPage() {
   // nao tem acesso ao disco do Mac. O POST registra o pedido e o GET acompanha
   // a conclusao. Antes a interface declarava sucesso na hora, sem nada ter sido
   // apagado de fato.
+  // Memoria e CPU seguem o mesmo caminho do disco: a Vercel nao alcanca esta
+  // maquina, entao o pedido vai para o banco e o runner executa.
+  //
+  // Nenhum dos dois faz o que apps de limpeza prometem. Nao existe 'limpar RAM'
+  // no macOS nem 'otimizar CPU'. O que existe, e o que estas acoes fazem, e
+  // encerrar processos de build orfaos - restos de execucoes que falharam e
+  // ficam segurando memoria e CPU.
+  const handleManutencao = async (acao, rotulo) => {
+    setManutencaoEmCurso(acao);
+    setCleanMessage(null);
+    try {
+      const res = await fetch('/api/analytics/maintenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: acao })
+      });
+      const resData = await res.json();
+      if (!res.ok) {
+        setCleanMessage(`Erro: ${resData.error || 'Falha ao solicitar'}`);
+        return;
+      }
+
+      setCleanMessage(`${rotulo}: ${resData.message}`);
+      if (!resData.runnerOnline) return;
+
+      const limite = Date.now() + 60000;
+      while (Date.now() < limite) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const st = await fetch(`/api/analytics/maintenance?action=${acao}`)
+          .then((r) => r.json())
+          .catch(() => null);
+        if (st && !st.pending) {
+          const r = st.result || {};
+          if (r.ok === false) {
+            setCleanMessage(`${rotulo}: não executado — ${r.motivo}.`);
+          } else if (acao === 'memory') {
+            setCleanMessage(
+              r.mortos
+                ? `${rotulo}: ${r.mortos} processo(s) órfão(s) encerrado(s), ~${r.liberadoMB} MB que estavam retidos.`
+                : `${rotulo}: nenhum processo órfão encontrado — nada a liberar.`
+            );
+          } else {
+            setCleanMessage(
+              r.mortos
+                ? `${rotulo}: ${r.mortos} processo(s) desgovernado(s) encerrado(s).`
+                : `${rotulo}: nenhum processo consumindo CPU indevidamente.`
+            );
+          }
+          fetchAnalytics();
+          return;
+        }
+      }
+      setCleanMessage(`${rotulo}: solicitado, mas o runner ainda não confirmou.`);
+    } catch (e) {
+      setCleanMessage('Erro ao comunicar com a API de manutenção.');
+    } finally {
+      setManutencaoEmCurso(null);
+    }
+  };
+
   const handleManualDiskCleanup = async () => {
     setCleaningDisk(true);
     setCleanMessage(null);
@@ -139,6 +200,28 @@ export default function AnalyticsPage() {
           >
             <Trash2 size={15} />
             {cleaningDisk ? 'Limpando...' : 'Executar Limpeza SSD Agora'}
+          </button>
+
+          <button
+            onClick={() => handleManutencao('memory', 'Memória')}
+            disabled={manutencaoEmCurso !== null}
+            className="btn-primary"
+            title="Encerra processos de build órfãos que ficaram segurando memória"
+            style={{ padding: '8px 16px', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(168, 85, 247, 0.12)', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#c084fc', opacity: manutencaoEmCurso ? 0.6 : 1 }}
+          >
+            <Activity size={15} />
+            {manutencaoEmCurso === 'memory' ? 'Liberando...' : 'Liberar Memória'}
+          </button>
+
+          <button
+            onClick={() => handleManutencao('cpu', 'CPU')}
+            disabled={manutencaoEmCurso !== null}
+            className="btn-primary"
+            title="Encerra processos de build consumindo CPU sem build em andamento"
+            style={{ padding: '8px 16px', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.35)', color: '#60a5fa', opacity: manutencaoEmCurso ? 0.6 : 1 }}
+          >
+            <Cpu size={15} />
+            {manutencaoEmCurso === 'cpu' ? 'Verificando...' : 'Encerrar Processos Travados'}
           </button>
 
           <button

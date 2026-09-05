@@ -330,56 +330,162 @@ setInterval(() => {
   updateRunnerHeartbeat(activeBuildId ? 'BUILDING' : 'ONLINE', activeBuildId);
 }, 10000);
 
-// ─── Limpeza sob demanda pedida pelo painel ──────────────────────────────────
+// ─── Manutencao sob demanda pedida pelo painel ───────────────────────────────
 //
-// A rota /api/analytics/clean-disk roda como funcao serverless na Vercel, cujo
-// filesystem e efemero e nao tem acesso algum a esta maquina. Antes ela tentava
-// apagar os diretorios direto e, como eles nao existem la, pulava tudo e ainda
-// respondia `success: true` - o botao confirmava uma limpeza que nunca ocorreu.
-//
-// Agora a rota apenas registra o pedido em Setting, e quem executa e o runner,
-// que roda onde os arquivos de fato estao. O banco e o intermediario, mesmo
-// padrao que a plataforma ja usa para despachar builds.
-let ultimaLimpezaProcessada = null;
+// As rotas de manutencao rodam como funcao serverless na Vercel, que nao tem
+// acesso algum a esta maquina - nem ao disco, nem aos processos. Antes a rota de
+// limpeza tentava apagar direto e, como os diretorios nao existem la, pulava
+// tudo e respondia `success: true`: o botao confirmava uma limpeza que nunca
+// ocorreu. Agora a rota so registra o pedido em Setting e quem executa e o
+// runner, que roda onde as coisas de fato estao. O banco e o intermediario,
+// mesmo padrao que a plataforma ja usa para despachar builds.
 
-async function verificarPedidoDeLimpeza() {
+// Processos que pertencem a um build e que, sem build em andamento, sao
+// necessariamente restos de execucao anterior. Lista fechada de proposito: matar
+// processo por uso de CPU sem saber o que e seria perigoso numa maquina que
+// tambem e usada para outras coisas.
+const PROCESSOS_DE_BUILD = [
+  'xcodebuild', 'clang', 'swift-frontend', 'swift-driver', 'ibtool', 'actool',
+  'gen_snapshot', 'dart', 'CompileDaemon', 'SourceKitService', 'XCBBuildService',
+  'Xcode.app/Contents/Developer/usr/bin', 'fastlane', 'ruby-4.0.6/bin/ruby'
+];
+
+function memoriaEmUsoMB() {
   try {
-    const pedido = await prisma.setting.findUnique({ where: { key: 'CLEANUP_REQUESTED_AT' } });
-    if (!pedido?.value || pedido.value === ultimaLimpezaProcessada) return;
+    const saida = execSync('vm_stat 2>/dev/null').toString();
+    const pagina = parseInt((saida.match(/page size of (\d+)/) || [])[1] || '4096', 10);
+    const ler = (rotulo) => {
+      const m = saida.match(new RegExp(rotulo + ':\\s+(\\d+)'));
+      return m ? parseInt(m[1], 10) : 0;
+    };
+    const usadas = ler('Pages active') + ler('Pages wired down') + ler('Pages occupied by compressor');
+    return Math.round((usadas * pagina) / (1024 * 1024));
+  } catch (e) {
+    return null;
+  }
+}
+
+// Lista processos de build vivos. `minCpu` filtra por uso de CPU no instante.
+function processosDeBuildVivos(minCpu = 0) {
+  const encontrados = [];
+  try {
+    const saida = execSync('ps -Ao pid=,pcpu=,rss=,comm= 2>/dev/null').toString();
+    for (const linha of saida.split('\n')) {
+      const m = linha.trim().match(/^(\d+)\s+([\d.]+)\s+(\d+)\s+(.*)$/);
+      if (!m) continue;
+      const [, pid, cpu, rss, comando] = m;
+      if (Number(pid) === process.pid) continue;
+      if (!PROCESSOS_DE_BUILD.some((n) => comando.includes(n))) continue;
+      if (parseFloat(cpu) < minCpu) continue;
+      encontrados.push({
+        pid: Number(pid),
+        cpu: parseFloat(cpu),
+        memMB: Math.round(Number(rss) / 1024),
+        comando: comando.split('/').pop()
+      });
+    }
+  } catch (e) {}
+  return encontrados;
+}
+
+function encerrarProcessos(lista) {
+  let mortos = 0;
+  for (const p of lista) {
+    try {
+      process.kill(p.pid, 'SIGTERM');
+      mortos++;
+      console.log(`   encerrado pid ${p.pid} (${p.comando}, ${p.cpu}% cpu, ${p.memMB} MB)`);
+    } catch (e) {}
+  }
+  return mortos;
+}
+
+// Libera memoria encerrando restos de builds anteriores.
+//
+// Nao existe "limpar RAM" no macOS: o sistema gerencia isso sozinho, e `purge`
+// alem de exigir root apenas descarta cache de disco util, que e reconstruido em
+// seguida. O que de fato prende memoria aqui sao processos de build orfaos -
+// hoje mesmo um stub do fastlane ficou 57 minutos vivo consumindo CPU.
+function liberarMemoria() {
+  if (activeBuildId) {
+    return { ok: false, motivo: 'build em andamento', mortos: 0, liberadoMB: 0 };
+  }
+  const antes = memoriaEmUsoMB();
+  const alvos = processosDeBuildVivos(0);
+  const mortos = encerrarProcessos(alvos);
+
+  // O quanto foi liberado e a soma do RSS dos processos encerrados, nao a
+  // diferenca de vm_stat antes/depois. A diferenca e ruidosa: outros processos
+  // alocam e liberam memoria no mesmo instante, e a leitura chega a subir logo
+  // apos uma limpeza real. Somar o RSS atribui o resultado a quem foi encerrado.
+  const liberadoMB = alvos.reduce((total, p) => total + p.memMB, 0);
+  const depois = memoriaEmUsoMB();
+
+  console.log(`🧠 Memoria: ${mortos} processo(s) encerrado(s), ~${liberadoMB} MB que estavam retidos`);
+  return { ok: true, mortos, liberadoMB, memAntesMB: antes, memDepoisMB: depois };
+}
+
+// "Otimizar CPU" nao existe como operacao - CPU nao e recurso que se limpe. O
+// que existe e processo desgovernado. Esta acao procura processos de build
+// consumindo CPU sem que haja build algum, que e exatamente o caso do fastlane
+// travado, e os encerra.
+function otimizarCpu() {
+  if (activeBuildId) {
+    return { ok: false, motivo: 'build em andamento', mortos: 0 };
+  }
+  const alvos = processosDeBuildVivos(5);
+  const mortos = encerrarProcessos(alvos);
+  console.log(`⚡ CPU: ${mortos} processo(s) desgovernado(s) encerrado(s)`);
+  return { ok: true, mortos, detalhes: alvos.map((p) => `${p.comando} ${p.cpu}%`) };
+}
+
+// Verificador generico: um pedido por prefixo de chave em Setting.
+const pedidosProcessados = {};
+
+async function verificarPedido(prefixo, executar) {
+  try {
+    const pedido = await prisma.setting.findUnique({ where: { key: `${prefixo}_REQUESTED_AT` } });
+    if (!pedido?.value || pedido.value === pedidosProcessados[prefixo]) return;
 
     // Na primeira passagem apos subir o daemon, adota como processado qualquer
-    // pedido que ja foi concluido. Sem isto, todo reinicio do runner dispararia
-    // de novo a ultima limpeza pedida, por mais antiga que fosse.
-    if (ultimaLimpezaProcessada === null) {
-      const concluido = await prisma.setting.findUnique({ where: { key: 'CLEANUP_DONE_AT' } });
+    // pedido ja concluido. Sem isto, todo reinicio repetiria a ultima acao
+    // pedida, por mais antiga que fosse.
+    if (pedidosProcessados[prefixo] === undefined) {
+      const concluido = await prisma.setting.findUnique({ where: { key: `${prefixo}_DONE_AT` } });
       if (concluido?.value && concluido.value >= pedido.value) {
-        ultimaLimpezaProcessada = pedido.value;
+        pedidosProcessados[prefixo] = pedido.value;
         return;
       }
     }
 
-    const removidos = runSmartDiskCleanup({ manual: true });
-    ultimaLimpezaProcessada = pedido.value;
+    const resultado = executar();
+    pedidosProcessados[prefixo] = pedido.value;
 
+    // O RESULTADO e gravado ANTES do DONE_AT, nunca o contrario. Quem acompanha
+    // (a interface) usa DONE_AT como sinal de conclusao e le o resultado logo em
+    // seguida; na ordem inversa existe uma janela em que o pedido ja aparece
+    // concluido mas o resultado ainda nao chegou, e a tela mostra vazio.
     const agora = new Date().toISOString();
     await prisma.setting.upsert({
-      where: { key: 'CLEANUP_DONE_AT' },
-      update: { value: agora },
-      create: { key: 'CLEANUP_DONE_AT', value: agora }
+      where: { key: `${prefixo}_LAST_RESULT` },
+      update: { value: JSON.stringify(resultado) },
+      create: { key: `${prefixo}_LAST_RESULT`, value: JSON.stringify(resultado) }
     });
     await prisma.setting.upsert({
-      where: { key: 'CLEANUP_LAST_RESULT' },
-      update: { value: String(removidos) },
-      create: { key: 'CLEANUP_LAST_RESULT', value: String(removidos) }
+      where: { key: `${prefixo}_DONE_AT` },
+      update: { value: agora },
+      create: { key: `${prefixo}_DONE_AT`, value: agora }
     });
-
-    console.log(`✅ Limpeza manual concluida. Itens removidos: ${removidos}`);
   } catch (e) {
-    console.error('Erro ao verificar pedido de limpeza:', e.message);
+    console.error(`Erro ao verificar pedido ${prefixo}:`, e.message);
   }
 }
 
-setInterval(verificarPedidoDeLimpeza, 15000);
+setInterval(() => {
+  verificarPedido('CLEANUP', () => ({ itens: runSmartDiskCleanup({ manual: true }) }));
+  verificarPedido('MEMORY', liberarMemoria);
+  verificarPedido('CPU', otimizarCpu);
+}, 15000);
 
 // Run Smart Disk Cleanup every 6 hours
 setInterval(() => {
